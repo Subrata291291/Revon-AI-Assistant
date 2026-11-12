@@ -1,0 +1,1 @@
+python -c "from vector_store import delete_vectors; print(delete_vectors('b0d27223-be35-4200-a960-0ac8a4d61e7f'))"
