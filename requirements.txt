@@ -1,0 +1,9 @@
+fastapi # for building the API
+uvicorn # for running the API server
+pypdf # for PDF processing
+multipart # for handling multipart form data
+langchain-text-splitters # for splitting text into manageable chunks
+langchain-core==0.3.80 # for core functionalities of LangChain
+pinecone # for vector database and similarity search
+google-genai==3.2.0 # for Google Generative AI integration
+python-dotenv==1.2.4 # for loading environment variables from .env files
