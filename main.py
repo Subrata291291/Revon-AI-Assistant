@@ -10,6 +10,8 @@ from fastapi import (
     Header,
     Depends
 )
+from dotenv import load_dotenv
+load_dotenv()
 
 from pdf_processor import extract_text_from_pdf
 from chunker import create_chunks
