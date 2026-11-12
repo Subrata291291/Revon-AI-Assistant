@@ -1,13 +1,50 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+
+import os
+import secrets
+
+from fastapi import (
+    FastAPI,
+    UploadFile,
+    File,
+    HTTPException,
+    Header,
+    Depends
+)
+
 from pdf_processor import extract_text_from_pdf
 from chunker import create_chunks
 from ingestion_service import ingest_pdf
+
 
 app = FastAPI(
     title="RevOn Policy AI Chatbot",
     description="AI-powered policy chatbot for RevOn",
     version="1.0.0"
 )
+
+
+def verify_admin_token(
+    x_revon_admin_token: str | None = Header(
+        default=None,
+        alias="X-RevOn-Admin-Token"
+    )
+):
+    expected_token = os.getenv("REVON_ADMIN_TOKEN")
+
+    if not expected_token:
+        raise HTTPException(
+            status_code=503,
+            detail="Document upload service is not configured."
+        )
+
+    if not x_revon_admin_token or not secrets.compare_digest(
+        x_revon_admin_token,
+        expected_token
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing authentication token."
+        )
 
 
 @app.get("/health")
@@ -26,9 +63,12 @@ def home():
 
 
 @app.post("/api/v1/documents/upload")
-async def upload_pdf(file: UploadFile = File(...)):
+async def upload_pdf(
+    file: UploadFile = File(...),
+    _: None = Depends(verify_admin_token)
+):
 
-    if not file.filename.lower().endswith(".pdf"):
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=400,
             detail="Only PDF files are allowed."
@@ -42,7 +82,6 @@ async def upload_pdf(file: UploadFile = File(...)):
             detail="Uploaded PDF is empty."
         )
 
-    # Basic upload size limit: 10 MB
     if len(file_bytes) > 10 * 1024 * 1024:
         raise HTTPException(
             status_code=413,
@@ -50,7 +89,6 @@ async def upload_pdf(file: UploadFile = File(...)):
         )
 
     try:
-
         result = ingest_pdf(
             file_bytes=file_bytes,
             filename=file.filename
@@ -59,15 +97,13 @@ async def upload_pdf(file: UploadFile = File(...)):
         return result
 
     except ValueError as error:
-
         raise HTTPException(
             status_code=400,
             detail=str(error)
         )
 
-    except Exception as error:
-
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=f"Document ingestion failed: {str(error)}"
+            detail="Document ingestion failed."
         )
