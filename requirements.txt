@@ -1,7 +1,7 @@
 fastapi # for building the API
 uvicorn # for running the API server
 pypdf # for PDF processing
-multipart # for handling multipart form data
+python-multipart # for handling multipart form data
 langchain-text-splitters # for splitting text into manageable chunks
 langchain-core==0.3.80 # for core functionalities of LangChain
 pinecone # for vector database and similarity search
