@@ -1,4 +1,5 @@
 import os
+from urllib import response
 
 import httpx
 from dotenv import load_dotenv
@@ -318,15 +319,22 @@ def get_document_vector_metadata(document_id: str) -> dict[str, dict]:
         for start in range(0, len(vector_ids), 1000):
             batch_ids = vector_ids[start:start + 1000]
 
-            response = client.post(
+            response = client.get(
                 f"{base_url}/vectors/fetch",
                 headers=headers,
-                json={
-                    "ids": batch_ids,
-                    "namespace": NAMESPACE
-                }
+                params=[
+                    *[("ids", vector_id) for vector_id in batch_ids],
+                    ("namespace", NAMESPACE)
+                ]
             )
+
             response.raise_for_status()
+
+            if not response.content:
+                raise RuntimeError(
+                    "Pinecone fetch returned an empty response."
+                )
+
             result = response.json()
 
             vectors = result.get("vectors", {})
