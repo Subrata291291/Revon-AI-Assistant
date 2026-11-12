@@ -503,5 +503,140 @@ class TestMainAPI(unittest.TestCase):
         self.assertTrue(recovery_calls[1].kwargs["is_active"])
 
 
+
+    def delete_form(self):
+        return {
+            "document_id": "doc-delete-123",
+            "logical_document_id": "policy-delete-123",
+            "version": "1",
+            "expected_vectors": "5",
+            "request_id": "request-delete-123",
+        }
+
+    def fake_inactive_metadata(self):
+        return {
+            f"vector-{i}": {
+                "document_id": "doc-delete-123",
+                "logical_document_id": "policy-delete-123",
+                "version": 1,
+                "request_id": "request-delete-123",
+                "is_active": False,
+            }
+            for i in range(5)
+        }
+
+    @patch("main.list_document_vector_ids")
+    @patch("main.delete_vectors")
+    @patch("main.get_document_vector_metadata")
+    @patch("main.verify_document_ownership")
+    def test_delete_inactive_document_success(
+        self,
+        mock_ownership,
+        mock_metadata,
+        mock_delete,
+        mock_remaining,
+    ):
+        mock_ownership.return_value = {"verified": True}
+        mock_metadata.return_value = self.fake_inactive_metadata()
+        mock_remaining.return_value = []
+
+        response = self.client.post(
+            "/api/v1/documents/delete",
+            headers=self.headers,
+            data=self.delete_form(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["deleted_vectors"], 5)
+        self.assertEqual(data["remaining_vectors"], 0)
+        self.assertTrue(data["verified"])
+
+        mock_ownership.assert_called_once()
+        mock_delete.assert_called_once_with("doc-delete-123")
+        mock_remaining.assert_called_once_with("doc-delete-123")
+
+    def test_delete_requires_admin_token(self):
+        response = self.client.post(
+            "/api/v1/documents/delete",
+            data=self.delete_form(),
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    @patch("main.delete_vectors")
+    @patch("main.get_document_vector_metadata")
+    @patch("main.verify_document_ownership")
+    def test_delete_blocks_active_document(
+        self,
+        mock_ownership,
+        mock_metadata,
+        mock_delete,
+    ):
+        metadata = self.fake_inactive_metadata()
+        metadata["vector-0"]["is_active"] = True
+
+        mock_ownership.return_value = {"verified": True}
+        mock_metadata.return_value = metadata
+
+        response = self.client.post(
+            "/api/v1/documents/delete",
+            headers=self.headers,
+            data=self.delete_form(),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        mock_delete.assert_not_called()
+
+    @patch("main.verify_document_ownership")
+    @patch("main.delete_vectors")
+    def test_delete_blocks_ownership_mismatch(
+        self,
+        mock_delete,
+        mock_ownership,
+    ):
+        mock_ownership.return_value = {"verified": False}
+
+        response = self.client.post(
+            "/api/v1/documents/delete",
+            headers=self.headers,
+            data=self.delete_form(),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        mock_delete.assert_not_called()
+
+    @patch("main.list_document_vector_ids")
+    @patch("main.delete_vectors")
+    @patch("main.get_document_vector_metadata")
+    @patch("main.verify_document_ownership")
+    def test_delete_fails_when_vectors_remain(
+        self,
+        mock_ownership,
+        mock_metadata,
+        mock_delete,
+        mock_remaining,
+    ):
+        mock_ownership.return_value = {"verified": True}
+        mock_metadata.return_value = self.fake_inactive_metadata()
+        mock_remaining.return_value = ["remaining-vector"]
+
+        response = self.client.post(
+            "/api/v1/documents/delete",
+            headers=self.headers,
+            data=self.delete_form(),
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertTrue(
+            response.json()["detail"]["reconciliation_required"]
+        )
+
+        mock_delete.assert_called_once_with("doc-delete-123")
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

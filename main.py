@@ -22,6 +22,9 @@ from vector_store import (
     verify_document_vector_count,
     verify_document_ownership,
     verify_document_active_state,
+    get_document_vector_metadata,
+    delete_vectors,
+    list_document_vector_ids,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -30,7 +33,7 @@ logger = logging.getLogger("revon-policy-chatbot")
 app = FastAPI(
     title="RevOn Policy AI Chatbot",
     description="AI-powered policy chatbot for RevOn",
-    version="1.3.1",
+    version="1.4.0",
 )
 
 
@@ -234,6 +237,134 @@ def get_document_status(
             detail="Unable to verify document state in Pinecone.",
         )
 
+
+@app.post("/api/v1/documents/delete")
+def delete_document(
+    document_id: str = Form(...),
+    logical_document_id: str = Form(...),
+    version: int = Form(...),
+    expected_vectors: int = Form(...),
+    request_id: str = Form(...),
+    _: None = Depends(verify_admin_token),
+):
+    """
+    Delete one verified inactive document from Pinecone.
+
+    WordPress remains responsible for its durable operation ledger,
+    private PDF cleanup, and registry deletion.
+
+    Active documents are never deleted through this endpoint.
+    """
+
+    document_id = validate_identifier(document_id, "document_id")
+    logical_document_id = validate_identifier(
+        logical_document_id, "logical_document_id"
+    )
+    request_id = validate_identifier(request_id, "request_id")
+
+    if version < 1 or expected_vectors < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="version and expected_vectors must be positive.",
+        )
+
+    try:
+        # Step 1: Verify exact vector count and ownership.
+        ownership = verify_document_ownership(
+            document_id=document_id,
+            logical_document_id=logical_document_id,
+            version=version,
+            request_id=request_id,
+            expected_vectors=expected_vectors,
+        )
+
+        if ownership.get("verified") is not True:
+            raise HTTPException(
+                status_code=409,
+                detail="Document ownership verification failed.",
+            )
+
+        # Step 2: Fetch all vector metadata and reject active documents.
+        metadata = get_document_vector_metadata(document_id)
+
+        if len(metadata) != expected_vectors:
+            raise HTTPException(
+                status_code=409,
+                detail="Vector count changed during deletion pre-check.",
+            )
+
+        active_vectors = [
+            vector_id
+            for vector_id, values in metadata.items()
+            if values.get("is_active") is not False
+        ]
+
+        if active_vectors:
+            raise HTTPException(
+                status_code=409,
+                detail="Active or unverified vectors cannot be deleted.",
+            )
+
+        # Step 3: Delete only this document's vectors.
+        delete_vectors(document_id)
+
+        # Step 4: Verify that no vectors remain.
+        remaining_ids = list_document_vector_ids(document_id)
+
+        if remaining_ids:
+            logger.error(
+                "Document deletion incomplete. document_id=%s remaining=%s",
+                document_id,
+                len(remaining_ids),
+            )
+
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "message": "Pinecone deletion could not be fully verified.",
+                    "document_id": document_id,
+                    "remaining_vectors": len(remaining_ids),
+                    "reconciliation_required": True,
+                },
+            )
+
+        return {
+            "status": "success",
+            "document_id": document_id,
+            "logical_document_id": logical_document_id,
+            "request_id": request_id,
+            "deleted_vectors": expected_vectors,
+            "remaining_vectors": 0,
+            "verified": True,
+            "message": "Inactive document vectors deleted and verified.",
+        }
+
+    except HTTPException:
+        raise
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=409,
+            detail=str(error),
+        )
+
+    except Exception:
+        logger.exception(
+            "Document deletion failed. request_id=%s document_id=%s",
+            request_id,
+            document_id,
+        )
+
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "Document deletion failed. Reconciliation is required.",
+                "document_id": document_id,
+                "request_id": request_id,
+                "reconciliation_required": True,
+            },
+        )
+    
 
 @app.post("/api/v1/documents/activate")
 def activate_document_version(
