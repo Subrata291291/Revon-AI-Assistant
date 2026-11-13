@@ -507,14 +507,20 @@ class TestStreamingEndpoint(unittest.TestCase):
     @patch("retrieval_service.retrieve_context")
     @patch("retrieval_service.generate_chat_stream")
     def test_stream_policy_question_delivers_sources(self, mock_stream, mock_retrieve, mock_intent):
-        """Policy streaming must emit a sources event before tokens."""
+        """Policy streaming must emit a sources event when the LLM cites a source.
+
+        Sources are only emitted when the LLM actually cites them (e.g. '[Source 1]')
+        in the generated text. The mock LLM must include the citation for the sources
+        event to be emitted.
+        """
         mock_intent.return_value = _intent_result("domain_question", True, True, "leave policy")
         mock_retrieve.return_value = {
-            "context": "[Source 1]\nFilename: leave.pdf\nPage: 1\nContent: 20 days.",
+            "context": "[Source 1]\nFilename: leave.pdf\nPage: 1\nContent: 20 days paid leave.",
             "sources": [{"filename": "leave.pdf", "page_number": 1, "score": 0.93}],
             "total_matches": 1,
         }
-        mock_stream.return_value = iter(["Employees ", "get ", "20 ", "days."])
+        # Include [Source 1] in the generated text so citation extraction works
+        mock_stream.return_value = iter(["Employees get 20 days paid annual leave [Source 1]."])
 
         res = self.client.post(
             "/api/v1/chat/stream",

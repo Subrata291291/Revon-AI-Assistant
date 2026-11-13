@@ -13,16 +13,16 @@ logger = logging.getLogger("revon-policy-chatbot.retrieval")
 DOMAIN_REFUSAL_MESSAGE = (
     "I am RevOn's dedicated AI assistant, designed to help with RevOn Business "
     "Solutions, our company policies, services, and official documentation. "
-    "Please feel free to ask any question related to RevOn!"
+    "Please feel free to ask any question related to RevOn or our published documents!"
 )
 
 SYSTEM_PROMPT_CONVERSATIONAL = """You are RevOn AI Assistant, the official, intelligent, and context-aware conversational AI assistant for RevOn Business Solutions.
 
 Core Operating Principles:
 1. RevOn Domain Boundary (STRICT):
-   - You assist ONLY with RevOn Business Solutions, its website content, services, products, company policies, procedures, and uploaded documentation.
+   - You assist ONLY with RevOn Business Solutions, its website content, services, products, company policies, procedures, and approved uploaded documentation (including technical architectures, APIs, networking, and official guides).
    - You MUST NOT answer general-knowledge questions, outside coding tasks, math riddles, science/physics questions, history, sports, or world trivia.
-   - If a user asks an unrelated question (e.g. "What is the capital of France?", "Write a Python script for Fibonacci", "Explain quantum physics", "Who won the World Cup?"), politely explain that you are dedicated to RevOn's website, services, and policies, and invite them to ask a RevOn-related question. Do NOT provide the actual answer to unrelated questions.
+   - If a user asks an unrelated question (e.g. "What is the capital of France?", "Write a Python script for Fibonacci", "Explain quantum physics", "Who won the World Cup?"), politely explain that you are dedicated to RevOn's website, services, policies, and official documentation, and invite them to ask a relevant question. Do NOT provide the actual answer to unrelated questions.
    - NEVER invent a connection between an unrelated topic and RevOn.
 
 2. Conversational Persona:
@@ -31,17 +31,25 @@ Core Operating Principles:
    - NEVER use static, canned, or repetitive boilerplate templates.
    - When asked what you can do or who you are, explain that you are RevOn's official assistant designed to help visitors explore RevOn's website, understand company policies, and locate information in official documents. Do not claim capabilities that are not implemented.
 
-3. Company Policy & Document Questions:
-   - When answering questions about RevOn's policies, guidelines, or procedures:
-     a. Base your answer STRICTLY on the provided Policy Context.
-     b. Cite supporting sources using exact labels such as [Source 1], [Source 2].
-     c. NEVER invent, extrapolate, or fabricate RevOn company policies, rules, benefits, dates, or requirements.
-     d. If the provided Policy Context does not contain sufficient information or no relevant documents are found, clearly and politely explain that RevOn's available documentation does not contain this information, and advise the user to contact RevOn HR or support.
-     e. Do NOT use external knowledge to fill missing proprietary company details.
+3. Tri-State Response Framework (Evidence & Grounding):
+   When answering questions with retrieved document context:
+   - Outcome A (Relevant with Supporting Evidence):
+     * If the retrieved document context contains clear, factual evidence answering the question (e.g., DNS resolution, PUT vs PATCH differences, TCP handshake, website request lifecycle, policy leave days):
+     * Synthesize a direct, natural, and accurate response based strictly on the retrieved context.
+     * Cite every supporting fact using the exact source format: [Source 1], [Source 2].
+     * Only cite sources that directly substantiate the statement. Do not cite arbitrary sources.
+   - Outcome B (Relevant Inquiry without Evidence):
+     * If the user asks about RevOn policies, services, or inquires whether a document covers a specific topic (e.g., "Does the document explain OAuth 2.0?", "What is RevOn's paternity leave policy?"), but the retrieved context DOES NOT contain this information:
+     * State clearly and politely that this information is not available in the current approved RevOn documentation or knowledge sources.
+     * If the user asked whether a document covers a topic (e.g., OAuth 2.0), clearly state that the available document does not cover or explain it.
+     * NEVER invent an answer, fabricate policies, or hallucinate citations.
+     * Do NOT cite any sources when the information is absent.
+   - Outcome C (Unrelated Question):
+     * If an unrelated topic or general LLM query is asked, politely decline and state your domain boundary. Do NOT use outside training knowledge to answer it.
 
 4. Multi-Turn Context:
    - Use the prior conversation history to maintain context, resolve follow-up questions, and deliver coherent conversational flow.
-   - Understand follow-up questions in the context of previous discussions (e.g., "How many days are allowed?" following a leave policy discussion).
+   - Understand follow-up questions in the context of previous discussions (e.g., "Why does the browser check DNS cache first?", "How many days are allowed?").
    - Do NOT allow conversation history to bypass the domain restriction for unrelated topics.
 
 5. Security & Prompt Defense:
@@ -134,17 +142,21 @@ class IntentAnalysisResult(dict):
 ROUTER_SYSTEM_PROMPT = """You are an intelligent semantic query classifier for RevOn AI Assistant.
 Analyze the user's message and recent conversation history to determine intent, domain relevance to RevOn, and whether knowledge retrieval is required.
 
-Domain Scope for RevOn:
-- RevOn company information, website content, services, and business offerings.
-- RevOn company policies, employee benefits, leaves, procedures, conduct, and uploaded documents.
-- Questions regarding policies or workplace rules even if the word "RevOn" is not explicitly mentioned (e.g., "What happens if an employee needs time off?", "How many sick days do we get?", "What is the dress code?").
-- Follow-up questions about a previously discussed RevOn topic (e.g., "How many days are allowed?", "Can you clarify that?").
+Approved Domain Scope for RevOn:
+1. RevOn company information, website content, products, services, and business offerings.
+2. RevOn company policies, employee benefits, leaves, procedures, conduct, and workplace rules (even without explicitly mentioning "RevOn").
+3. All topics covered by RevOn's uploaded and approved documentation, including:
+   - Technical architectures and networking: DNS resolution, DNS caching, TCP three-way handshake (SYN, SYN-ACK, ACK), and website request lifecycle/journeys.
+   - Web development and APIs: REST APIs, HTTP methods (including differences between PUT and PATCH, GET, POST, DELETE), HTTP status codes (200, 403, 404, 500), and JSON data exchange.
+   - Any other official guides or documentation provided by RevOn.
+4. Inquiries about the contents, scope, or coverage of uploaded documents (e.g., "Does the document explain OAuth 2.0?", "What documents are uploaded?", "Can you explain the API guide?").
+5. Follow-up questions about a previously discussed topic (e.g., "Why does the browser check DNS cache first?", "How many days are allowed?", "What is the difference between them?").
 
-Out-of-Domain Scope (unrelated):
-- General world trivia, geography, politics, sports (e.g., "What is the capital of France?", "Who won the World Cup?").
-- Outside programming tasks, coding algorithms, math homework (e.g., "Write a Python Fibonacci program", "Solve this quadratic equation").
-- General science, physics, medicine, astronomy (e.g., "Explain quantum physics", "What causes earthquakes?").
-- Other non-RevOn topics or random chitchat.
+Out-of-Domain Scope (Strictly Unrelated):
+- General world trivia, geography, politics, sports, entertainment (e.g., "What is the capital of France?", "Who won the FIFA World Cup?", "Who is the president of the USA?").
+- General science, physics, medicine, astronomy, biology (e.g., "Explain quantum physics", "What causes earthquakes?", "How do black holes work?").
+- General programming tutorials, language overviews, or coding algorithms not covered by RevOn's documentation (e.g., "What is Python?", "Write a Python script to calculate Fibonacci", "Write a binary search algorithm in C++", "Solve this math problem").
+- Random non-business chitchat, cooking recipes, personal advice.
 
 Output ONLY a valid JSON object matching this schema:
 {
@@ -159,10 +171,29 @@ Guidelines:
 1. "greeting": "Hello", "Hi", "Good morning", "Hey" -> is_relevant: true, requires_retrieval: false, standalone_query: null
 2. "acknowledgement": "Thank you", "Thanks", "Got it", "Okay", "Goodbye" -> is_relevant: true, requires_retrieval: false, standalone_query: null
 3. "capability_question": "What can you do?", "Who are you?", "How can you help me?" -> is_relevant: true, requires_retrieval: false, standalone_query: null
-4. "unrelated_question": Questions outside RevOn domain (general trivia, non-RevOn coding, science, sports, math) -> is_relevant: false, requires_retrieval: false, standalone_query: null
-5. "domain_question": Substantive inquiry about RevOn, its services, policies, or documents -> is_relevant: true, requires_retrieval: true, standalone_query: rewritten standalone search query.
-6. "follow_up_question": A follow-up to a prior RevOn discussion -> is_relevant: true, requires_retrieval: true, standalone_query: rewritten standalone search query resolving pronouns from history.
+4. "unrelated_question": Questions outside RevOn domain (general trivia, sports, world geography, external science, external coding algorithms like Fibonacci, general language queries like "What is Python?") -> is_relevant: false, requires_retrieval: false, standalone_query: null
+5. "domain_question": Any substantive inquiry about RevOn, company policies, or topics in the approved technical/business documents (DNS, TCP, PUT vs PATCH, website journey, APIs, leave policies, document coverage like OAuth 2.0) -> is_relevant: true, requires_retrieval: true, standalone_query: standalone search query for vector retrieval.
+6. "follow_up_question": A follow-up to prior turns in conversation history -> is_relevant: true, requires_retrieval: true, standalone_query: rewritten standalone search query resolving pronouns from history.
 """
+
+
+def extract_cited_sources(answer_text: str, available_sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Extract only those sources that were explicitly cited in answer_text as [Source X].
+    Guarantees that arbitrary retrieved chunks are not reported when ungrounded.
+    """
+    if not answer_text or not available_sources:
+        return []
+
+    cited_numbers = [int(m) for m in re.findall(r"\[Source\s+(\d+)\]", answer_text)]
+    seen = set()
+    cited_sources = []
+    for num in cited_numbers:
+        if num not in seen and 1 <= num <= len(available_sources):
+            seen.add(num)
+            source_item = available_sources[num - 1]
+            cited_sources.append(source_item)
+    return cited_sources
 
 
 def analyze_query_intent(question: str, history: list[dict[str, str]] | None = None) -> IntentAnalysisResult:
@@ -373,37 +404,44 @@ def answer_conversational_question(
     messages.extend(history_messages)
 
     if retrieved_context.strip():
-        user_message_content = f"""Policy Documents Context:
+        user_message_content = f"""Approved Knowledge Base & Document Context:
 {retrieved_context}
 
 User Question:
 {clean_question}
 
-Answer the user question based on the policy context above. Cite sources using [Source 1], [Source 2] format."""
+Instructions:
+1. If the context contains direct evidence to answer the question, answer accurately and cite the exact source using [Source X] format.
+2. If the user is asking whether a specific topic (e.g., OAuth 2.0) is explained in the document and the context does not contain it, state clearly that the available document does not explain or cover that topic. Do NOT invent an answer or cite sources.
+3. If the question asks for company or policy details not present in the context, state politely that the information is not available in the current approved RevOn documentation. Do NOT invent policies or cite sources.
+4. If the question is completely unrelated to RevOn or the documents, politely decline."""
     else:
         # Relevant to RevOn, but no published documents found
         user_message_content = f"""User Question:
 {clean_question}
 
-[System note: The question is relevant to RevOn, but no relevant policy documents were found in the knowledge base. State clearly and politely that this information is not available in RevOn's published policy documents and suggest contacting the appropriate RevOn department (such as HR or support). Do NOT fabricate any policy details.]"""
+[System note: No relevant information was found in the approved RevOn knowledge sources or uploaded documents. State clearly and politely that this information is not available in RevOn's current documentation and advise the user to contact the appropriate RevOn department (such as HR or support). Do NOT invent any details or fabricate citations.]"""
 
     messages.append({"role": "user", "content": user_message_content})
 
     answer = generate_chat_response(messages=messages, temperature=0.2, max_tokens=1500)
 
+    # Filter to only sources actually cited in the generated answer
+    used_sources = extract_cited_sources(answer, sources)
+
     conversation_manager.record_turn(
         conversation_id=active_cid,
         user_message=clean_question,
         assistant_message=answer,
-        sources=sources if sources else None
+        sources=used_sources if used_sources else None
     )
 
     return {
         "conversation_id": active_cid,
         "answer": answer,
-        "sources": sources,
-        "total_matches": total_matches,
-        "is_policy_query": bool(sources),
+        "sources": used_sources,
+        "total_matches": len(used_sources),
+        "is_policy_query": bool(used_sources),
         "intent": intent,
     }
 
@@ -507,15 +545,12 @@ def stream_conversational_question(
             for s in raw_sources:
                 sources.append({
                     "filename": str(s.get("filename") or "Unknown document"),
-                    "page": s.get("page_number"),
+                    "page": s.get("page_number", s.get("page")),
+                    "page_number": s.get("page_number", s.get("page")),
                     "score": s.get("score")
                 })
         except Exception as err:
             logger.error("Document retrieval failed in stream: %s", err)
-
-        # Emit sources event if any were retrieved
-        if sources:
-            yield f"event: sources\ndata: {json.dumps({'sources': sources})}\n\n"
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT_CONVERSATIONAL}
@@ -523,18 +558,22 @@ def stream_conversational_question(
         messages.extend(history_messages)
 
         if retrieved_context.strip():
-            user_message_content = f"""Policy Documents Context:
+            user_message_content = f"""Approved Knowledge Base & Document Context:
 {retrieved_context}
 
 User Question:
 {clean_question}
 
-Answer the user question based on the policy context above. Cite sources using [Source 1], [Source 2] format."""
+Instructions:
+1. If the context contains direct evidence to answer the question, answer accurately and cite the exact source using [Source X] format.
+2. If the user is asking whether a specific topic (e.g., OAuth 2.0) is explained in the document and the context does not contain it, state clearly that the available document does not explain or cover that topic. Do NOT invent an answer or cite sources.
+3. If the question asks for company or policy details not present in the context, state politely that the information is not available in the current approved RevOn documentation. Do NOT invent policies or cite sources.
+4. If the question is completely unrelated to RevOn or the documents, politely decline."""
         else:
             user_message_content = f"""User Question:
 {clean_question}
 
-[System note: The question is relevant to RevOn, but no relevant policy documents were found in the knowledge base. State clearly and politely that this information is not available in RevOn's published policy documents and suggest contacting the appropriate RevOn department (such as HR or support). Do NOT fabricate any policy details.]"""
+[System note: No relevant information was found in the approved RevOn knowledge sources or uploaded documents. State clearly and politely that this information is not available in RevOn's current documentation and advise the user to contact the appropriate RevOn department (such as HR or support). Do NOT invent any details or fabricate citations.]"""
 
         messages.append({"role": "user", "content": user_message_content})
 
@@ -544,13 +583,21 @@ Answer the user question based on the policy context above. Cite sources using [
             yield f"event: token\ndata: {json.dumps({'content': token, 'token': token})}\n\n"
 
         final_text = "".join(full_answer).strip()
+
+        # Extract only cited sources
+        used_sources = extract_cited_sources(final_text, sources)
+
+        # Emit sources event if any were actually cited
+        if used_sources:
+            yield f"event: sources\ndata: {json.dumps({'sources': used_sources})}\n\n"
+
         conversation_manager.record_turn(
             conversation_id=active_cid,
             user_message=clean_question,
             assistant_message=final_text,
-            sources=sources if sources else None
+            sources=used_sources if used_sources else None
         )
-        yield f"event: complete\ndata: {json.dumps({'conversation_id': active_cid, 'status': 'success', 'is_policy_query': bool(sources), 'answer': final_text})}\n\n"
+        yield f"event: complete\ndata: {json.dumps({'conversation_id': active_cid, 'status': 'success', 'is_policy_query': bool(used_sources), 'sources': used_sources, 'answer': final_text})}\n\n"
 
     except Exception as err:
         logger.exception("Error in stream_conversational_question: %s", err)
