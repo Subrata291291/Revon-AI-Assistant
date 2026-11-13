@@ -85,3 +85,11 @@ uploads/
 private_documents/
 revon-private-documents/
 *.pdf
+
+# ==============================
+# Local development scratch & backup files
+# ==============================
+main_backup_before_chat.py
+main_public_chat.py
+main_diff_audit.txt
+delete_indexID.txt

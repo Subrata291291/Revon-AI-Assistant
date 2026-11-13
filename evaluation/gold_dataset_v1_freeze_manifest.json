@@ -1,0 +1,41 @@
+{
+  "manifest_version": "1.0.0",
+  "dataset_version": "1.0.0",
+  "dataset_file": "gold_dataset_v1.json",
+  "metric_file": "gold_dataset_v1_metric_baseline.json",
+  "annotation_policy_file": "gold_dataset_v1_annotation_policy.md",
+  "source_integrity": {
+    "algorithm": "SHA-256",
+    "expected": "ed74f10871a921595c058a90f552f169b79b7198287f3551d4a465aeeaf87856",
+    "calculated": "ed74f10871a921595c058a90f552f169b79b7198287f3551d4a465aeeaf87856",
+    "match": true,
+    "source_filename": "Pre-Read_ Basic Understanding on API  (1)-5983.pdf",
+    "page_count": 16,
+    "verification_method": "Independent SHA-256 calculation over supplied PDF bytes."
+  },
+  "index_provenance": {
+    "document_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee",
+    "logical_document_id": "20dcdd7c-a603-4a3f-b384-46081d625a73",
+    "namespace": "revon-policies",
+    "active_vector_count": 50,
+    "version": 1,
+    "note": "Copied from completed read-only audit summaries; no current Pinecone request."
+  },
+  "governance": {
+    "semantic_versioning": {
+      "patch": "Non-semantic documentation or metadata correction.",
+      "minor": "Backward-compatible query, passage, or annotation additions.",
+      "major": "Breaking change to query meaning, annotation semantics, or evaluation contract."
+    },
+    "immutability": "Do not edit v1.0.0 in place; issue a new version and retain revision history.",
+    "approved_decisions": [
+      "Broad Policy: Q3 9/0 = Grade 1.",
+      "Dual reporting: Evidence-MRR@3 and Direct Answer Reciprocal Rank@3.",
+      "Canonical ground truth is passage text plus source document hash.",
+      "Q4 active-index mapping is 16/1.",
+      "Source PDF SHA-256 verification is mandatory and passed."
+    ]
+  },
+  "known_gap": "Verbatim historical query strings were not present in available audit materials. Query text is null; exact prompt strings must be added through a controlled revision if recovered.",
+  "created_utc": "2026-11-13T14:00:45.503319+00:00"
+}

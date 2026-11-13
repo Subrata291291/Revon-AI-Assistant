@@ -24,18 +24,35 @@ def retrieve_context(question: str, top_k: int = 5):
     context_parts = []
     sources = []
 
-    for index, match in enumerate(matches, start=1):
-        metadata = match.get("metadata", {})
+    print("\n========== RETRIEVAL DEBUG ==========")
+    print(f"Question: {question}")
+    print(f"Total Pinecone matches: {len(matches)}")
+
+    for match in matches:
+        metadata = match.get("metadata") or {}
 
         text = metadata.get("text", "")
         filename = metadata.get("filename", "Unknown document")
         page_number = metadata.get("page_number", "Unknown")
+        score = match.get("score")
 
-        if not text.strip():
+        # Skip empty or invalid text
+        if not isinstance(text, str) or not text.strip():
+            print("\n[SKIPPED] Empty or invalid chunk text")
             continue
 
+        # Assign source number only after validating text
+        source_number = len(context_parts) + 1
+
+        print(f"\n--- Retrieved Chunk {source_number} ---")
+        print(f"Filename: {filename}")
+        print(f"Page: {page_number}")
+        print(f"Score: {score}")
+        print(f"Text length: {len(text)} characters")
+        print(f"Text preview: {repr(text[:500])}")
+
         context_parts.append(
-            f"[Source {index}]\n"
+            f"[Source {source_number}]\n"
             f"Filename: {filename}\n"
             f"Page: {page_number}\n"
             f"Content: {text}"
@@ -44,8 +61,12 @@ def retrieve_context(question: str, top_k: int = 5):
         sources.append({
             "filename": filename,
             "page_number": page_number,
-            "score": match.get("score")
+            "score": score
         })
+
+    print("\n========== RETRIEVAL SUMMARY ==========")
+    print(f"Valid retrieved chunks: {len(context_parts)}")
+    print("=======================================\n")
 
     return {
         "context": "\n\n".join(context_parts),

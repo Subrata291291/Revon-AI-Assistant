@@ -1,0 +1,79 @@
+{
+  "dataset_version": "1.0.0",
+  "k": 3,
+  "policy": "Broad Policy",
+  "corpus_relevant_chunk_denominators": {
+    "Q1": 4,
+    "Q2": 2,
+    "Q3": 8,
+    "Q4": 1,
+    "Q5": 4,
+    "total": 19
+  },
+  "metrics": [
+    {
+      "name": "Hit Rate@3",
+      "original": 1.0,
+      "diversified": 1.0,
+      "denominator": "5 queries"
+    },
+    {
+      "name": "Precision@3",
+      "original": 0.4667,
+      "diversified": 0.4,
+      "denominator": "15 retrieved slots"
+    },
+    {
+      "name": "Standard Macro Recall@3",
+      "original": 0.775,
+      "diversified": 0.575,
+      "denominator": "Unweighted mean of per-query recall using R_total,q"
+    },
+    {
+      "name": "Standard Micro Recall@3",
+      "original": 0.6316,
+      "diversified": 0.4737,
+      "denominator": "12/19 and 9/19 relevant retrieved chunks"
+    },
+    {
+      "name": "Evidence-MRR@3",
+      "relevance_threshold": "grade >= 1",
+      "original": 0.8667,
+      "diversified": 0.9,
+      "denominator": "5 query reciprocal ranks"
+    },
+    {
+      "name": "Direct Answer Reciprocal Rank@3",
+      "relevance_threshold": "grade == 2",
+      "original": 0.7667,
+      "diversified": 0.8,
+      "denominator": "5 query reciprocal ranks"
+    },
+    {
+      "name": "Corpus-Level Graded nDCG@3",
+      "original": 0.806,
+      "diversified": 0.78,
+      "gain": "2^grade - 1",
+      "idcg_scope": "Best possible Top-3 ranking from all judged relevant corpus chunks for each query"
+    },
+    {
+      "name": "Corpus-Level Binary nDCG@3",
+      "original": 0.9,
+      "diversified": 0.755,
+      "gain": "binary relevance: grade >= 1",
+      "idcg_scope": "Best possible Top-3 ranking from all judged relevant corpus chunks for each query"
+    }
+  ],
+  "definitions": {
+    "hit_rate_at_k": "Mean over queries of 1 if at least one Top-K result has grade >= 1, else 0.",
+    "precision_at_k": "Relevant retrieved results in Top-K divided by K.",
+    "macro_recall_at_k": "Mean over queries of relevant retrieved Top-K chunks divided by R_total for that query.",
+    "micro_recall_at_k": "Total relevant retrieved chunks across queries divided by total relevant corpus chunks across queries.",
+    "evidence_mrr_at_k": "Mean reciprocal rank of the first result with grade >= 1.",
+    "direct_answer_rr_at_k": "Mean reciprocal rank of the first result with grade == 2.",
+    "dcg": "Sum of gain_i / log2(i + 1), ranks i starting at 1.",
+    "ndcg": "DCG divided by IDCG under the stated corpus-level scope."
+  },
+  "source_report": "RAG Gold Dataset Final Metric Consistency Report (2026-11-13)",
+  "caveat": "Values are preserved from the completed audit reports; not recalculated from a live retrieval run."
+}

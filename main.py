@@ -1,6 +1,10 @@
 import os
 import secrets
 import logging
+import time
+import threading
+from collections import defaultdict, deque
+from typing import Deque
 
 from fastapi import (
     FastAPI,
@@ -11,7 +15,9 @@ from fastapi import (
     Header,
     Depends,
     Query,
+    Request,
 )
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -30,6 +36,71 @@ from vector_store import (
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("revon-policy-chatbot")
+
+
+# Public chat is accessed through the WordPress PHP proxy. The separate chat
+# token is never sent to browser JavaScript and is not the admin document token.
+CHAT_RATE_LIMIT = int(os.getenv("CHAT_RATE_LIMIT_PER_MINUTE", "10"))
+CHAT_RATE_WINDOW_SECONDS = 60
+_chat_requests: dict[str, Deque[float]] = defaultdict(deque)
+_chat_rate_lock = threading.Lock()
+
+
+class PublicChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+
+
+def verify_chat_token(
+    x_revon_chat_token: str | None = Header(
+        default=None,
+        alias="X-RevOn-Chat-Token",
+    ),
+):
+    """Authenticate the server-to-server WordPress chat proxy."""
+    expected_token = os.getenv("REVON_CHAT_TOKEN")
+
+    if not expected_token:
+        raise HTTPException(
+            status_code=503,
+            detail="Public chat service is not configured.",
+        )
+
+    if (
+        not x_revon_chat_token
+        or not secrets.compare_digest(x_revon_chat_token, expected_token)
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing chat credential.",
+        )
+
+
+def enforce_chat_rate_limit(visitor_key: str) -> None:
+    """Best-effort per-process limiter; enforce edge limits at WordPress/CDN too."""
+    now = time.monotonic()
+    cutoff = now - CHAT_RATE_WINDOW_SECONDS
+
+    with _chat_rate_lock:
+        # Opportunistically remove expired entries to keep memory bounded.
+        for key in list(_chat_requests):
+            queue = _chat_requests[key]
+            while queue and queue[0] <= cutoff:
+                queue.popleft()
+            if not queue:
+                _chat_requests.pop(key, None)
+
+        queue = _chat_requests[visitor_key]
+        while queue and queue[0] <= cutoff:
+            queue.popleft()
+
+        if len(queue) >= CHAT_RATE_LIMIT:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many chat requests. Please try again shortly.",
+                headers={"Retry-After": str(CHAT_RATE_WINDOW_SECONDS)},
+            )
+
+        queue.append(now)
 
 app = FastAPI(
     title="RevOn Policy AI Chatbot",
@@ -720,3 +791,73 @@ def activate_document_version(
             )
 
         raise HTTPException(status_code=500, detail=detail) from activation_error
+
+
+@app.post("/api/v1/chat")
+def public_policy_chat(
+    payload: PublicChatRequest,
+    request: Request,
+    _: None = Depends(verify_chat_token),
+    x_revon_visitor_ip: str | None = Header(
+        default=None,
+        alias="X-RevOn-Visitor-IP",
+    ),
+):
+    """Answer a public visitor using active policy documents only.
+
+    The browser talks to WordPress. WordPress calls this endpoint server-side
+    using REVON_CHAT_TOKEN and may pass the visitor IP for per-visitor limits.
+    This endpoint never accepts document IDs, admin operations, or arbitrary
+    retrieval filters from the public caller.
+    """
+    question = payload.question.strip()
+    if not question:
+        raise HTTPException(status_code=422, detail="Question cannot be empty.")
+
+    # The visitor IP header is trusted only because this endpoint requires the
+    # private WordPress-to-backend credential. Fall back to the direct peer.
+    visitor_key = (x_revon_visitor_ip or "").strip()
+    if not visitor_key and request.client:
+        visitor_key = request.client.host
+    if not visitor_key:
+        visitor_key = "unknown"
+
+    enforce_chat_rate_limit(visitor_key)
+
+    try:
+        # Import lazily so document-management endpoints remain independent
+        # from chat provider initialization and tests can isolate the service.
+        from retrieval_service import answer_policy_question
+
+        result = answer_policy_question(question=question, top_k=5)
+        answer = result.get("answer")
+        if not isinstance(answer, str) or not answer.strip():
+            raise RuntimeError("The policy answer service returned no answer.")
+
+        raw_sources = result.get("sources", [])
+        sources = []
+        for source in raw_sources:
+            if not isinstance(source, dict):
+                continue
+            sources.append({
+                "filename": str(source.get("filename") or "Unknown document"),
+                "page": source.get("page_number"),
+                "score": source.get("score"),
+            })
+
+        return {
+            "status": "success",
+            "answer": answer.strip(),
+            "sources": sources,
+            "total_matches": int(result.get("total_matches", len(sources))),
+        }
+
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except Exception:
+        logger.exception("Public policy chat failed.")
+        raise HTTPException(
+            status_code=502,
+            detail="The policy assistant is temporarily unavailable. Please try again.",
+        )
+

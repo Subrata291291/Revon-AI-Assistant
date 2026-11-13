@@ -1,0 +1,391 @@
+{
+  "dataset_id": "revon-policy-rag-gold",
+  "dataset_version": "1.0.0",
+  "status": "frozen_snapshot_with_query_text_gap",
+  "source_document": {
+    "filename": "Pre-Read_ Basic Understanding on API  (1)-5983.pdf",
+    "sha256": "ed74f10871a921595c058a90f552f169b79b7198287f3551d4a465aeeaf87856",
+    "page_count": 16,
+    "source_document_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee",
+    "logical_document_id": "20dcdd7c-a603-4a3f-b384-46081d625a73"
+  },
+  "index_snapshot": {
+    "provider": "Pinecone",
+    "namespace": "revon-policies",
+    "active_vector_count": 50,
+    "document_version": 1,
+    "note": "Historical static snapshot from completed audits; no current Pinecone request was made."
+  },
+  "annotation_policy": {
+    "policy_id": "broad-supporting-evidence-v1",
+    "grades": {
+      "0": "Irrelevant or insufficient evidence.",
+      "1": "Supporting evidence, including meaningful partial comparison or prerequisite context.",
+      "2": "Direct, primary answer that substantially answers the question independently."
+    },
+    "binary_relevance_threshold": 1,
+    "approved_decision": "Q3 vector 9/0 is Grade 1."
+  },
+  "queries": [
+    {
+      "query_id": "Q1",
+      "topic": "DNS Translation",
+      "query_text": null,
+      "query_text_status": "not_preserved_in_available_historical_audit_artifacts",
+      "query_text_note": "The audit preserves the topic label and result snapshot, but not the verbatim original query.",
+      "corpus_relevant_chunk_count": 4,
+      "canonical_gold_passages": [
+        {
+          "passage_id": "Q1-P1",
+          "canonical_text": "1. DNS Resolution: Translating Domain Names to IP Addresses DNS (Domain Name System) is like the phonebook of the internet . Humans prefer domain names (www.google.com), but machines need IP addresses (142.250.190.36) to route data. Why is it needed? You can’t expect users to remember the IPs of every website. DNS allows us to use easy-to-remember domain names. How it Works (Step-by-Step): 1. You type www.example.com into your browser. 2. The browser checks the local DNS cache (if you've visited recently). 3. If not found, it queries the recursive resolver (usually provided by your ISP). 4. Resolver asks the root DNS server → then the TLD server (like .com) → then the authoritative DNS server . 5. The final IP address is returned to your computer. 6. Now, your browser knows where to send the request.",
+          "source_page_numbers": [
+            1
+          ],
+          "rationale": "Source-PDF DNS definition and ordered resolution steps."
+        },
+        {
+          "passage_id": "Q1-P2",
+          "canonical_text": "Imagine you want to call Pizza Hut but don’t know the number. You check your contact list (cache), then try Google (recursive resolver), which checks various directories until it gets the number.",
+          "source_page_numbers": [
+            2
+          ],
+          "rationale": "Supporting analogy for DNS cache and recursive resolver."
+        }
+      ],
+      "relevance_judgments": [
+        {
+          "index_coordinate": "1/1",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-1-chunk-1",
+          "grade": 1,
+          "rationale": "Supporting DNS context; legacy nominal coordinate."
+        },
+        {
+          "index_coordinate": "1/2",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-1-chunk-2",
+          "grade": 2,
+          "rationale": "Direct step-by-step DNS translation process."
+        },
+        {
+          "index_coordinate": "1/3",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-1-chunk-3",
+          "grade": 1,
+          "rationale": "Supporting later portion of the DNS resolution steps."
+        },
+        {
+          "index_coordinate": "2/0",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-2-chunk-0",
+          "grade": 1,
+          "rationale": "Pizza Hut analogy supports DNS cache/resolver concepts."
+        }
+      ],
+      "retrieval_snapshots": {
+        "original_top3": [
+          "1/2",
+          "1/3",
+          "2/0"
+        ],
+        "original_grades": [
+          2,
+          1,
+          1
+        ],
+        "diversified_top3": [
+          "1/2",
+          "2/0",
+          "1/0"
+        ],
+        "diversified_grades": [
+          2,
+          1,
+          0
+        ]
+      }
+    },
+    {
+      "query_id": "Q2",
+      "topic": "TCP Handshake",
+      "query_text": null,
+      "query_text_status": "not_preserved_in_available_historical_audit_artifacts",
+      "query_text_note": "The audit preserves the topic label and result snapshot, but not the verbatim original query.",
+      "corpus_relevant_chunk_count": 2,
+      "canonical_gold_passages": [
+        {
+          "passage_id": "Q2-P1",
+          "canonical_text": "2. TCP Handshake: Establishing a Reliable Connection TCP (Transmission Control Protocol) ensures that data is sent reliably and in order . Before any actual data transfer, a connection must be established using the three-way handshake . The 3-Step Handshake: 1. SYN (Synchronize) – Client says, “Hey, I want to talk. Here's my sequence number.” 2. SYN-ACK – Server replies, “Sure! Here’s my sequence number. Acknowledging yours too.” 3. ACK (Acknowledge) – Client says, “Cool, ready to start!” Only after this process can data transfer begin. For Example: Think of it like a polite phone call: ● You dial a number (SYN) ● They pick up and say, \"Hello?\" (SYN-ACK) ● You say, “Hi, can we talk now?” (ACK) ● Now the conversation starts.",
+          "source_page_numbers": [
+            2
+          ],
+          "rationale": "Source-PDF three-way handshake sequence: SYN, SYN-ACK, ACK."
+        }
+      ],
+      "relevance_judgments": [
+        {
+          "index_coordinate": "2/1",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-2-chunk-1",
+          "grade": 2,
+          "rationale": "Complete three-step TCP handshake explanation."
+        },
+        {
+          "index_coordinate": "2/2",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-2-chunk-2",
+          "grade": 1,
+          "rationale": "Supporting phone-call analogy repeats the handshake sequence."
+        }
+      ],
+      "retrieval_snapshots": {
+        "original_top3": [
+          "2/1",
+          "2/2",
+          "6/0"
+        ],
+        "original_grades": [
+          2,
+          1,
+          0
+        ],
+        "diversified_top3": [
+          "2/1",
+          "6/0",
+          "4/2"
+        ],
+        "diversified_grades": [
+          2,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "query_id": "Q3",
+      "topic": "Serverless APIs",
+      "query_text": null,
+      "query_text_status": "not_preserved_in_available_historical_audit_artifacts",
+      "query_text_note": "The audit preserves the topic label and result snapshot, but not the verbatim original query.",
+      "corpus_relevant_chunk_count": 8,
+      "canonical_gold_passages": [
+        {
+          "passage_id": "Q3-P1",
+          "canonical_text": "The server (which is the brain behind the API) can be hosted in two major ways: Serverful APIs — Traditional, always-on infrastructure Serverless APIs — Modern, event-driven, cloud-native infrastructure Each plays a crucial role depending on the nature of the task and system, and both are used to serve LLMs, sometimes in combination.",
+          "source_page_numbers": [
+            8
+          ],
+          "rationale": "High-level source-PDF contrast framing."
+        },
+        {
+          "passage_id": "Q3-P2",
+          "canonical_text": "1. What is a Serverful API? A Serverful API is hosted on a dedicated server or virtual machine (VM) . This server is always running , whether or not any request is being made. Think of it like a restaurant kitchen that’s open 24x7 — even when no one is ordering. In this model: ● You (or the provider) must set up the infrastructure : the machine, memory, CPU, scaling, etc. ● The server is always available to take requests, like an always-open shop. ● All LLM computation (e.g., generating embeddings or responses) happens on this machine. LLM Example: Using a Local Model via API Imagine you download a model like LLaMA or Mistral , deploy it on your own VM(Virtual Machine), and expose it via a Flask or FastAPI server. This is a classic serverful setup. You must: ● Keep the server running, ● Manage memory usage for large models, ● Monitor uptime and failures. Advantages of Serverful APIs: ● Full control over hardware, performance, and model configuration. ● Consistent latency because the server is always warm. ● Good for LLMs fine-tuned for specific tasks running on enterprise hardware. Disadvantages: ● High cost: You pay even when no one uses the API. ● Poor scalability: Handling spikes in LLM usage requires manual scaling or expensive autoscaling setups. ● Higher responsibility: You manage security patches, infra failures, and updates.",
+          "source_page_numbers": [
+            9
+          ],
+          "rationale": "Serverful baseline definition and operating characteristics."
+        },
+        {
+          "passage_id": "Q3-P3",
+          "canonical_text": "2. What is a Serverless API? A Serverless API means: You write your logic, deploy it to the cloud, and the cloud handles everything else. There’s still a server behind the scenes, but you never manage it . The server spins up on demand , executes your code (like processing a prompt), then shuts down. You only pay for the time used , not for idle waiting. LLM Example: Calling Gemini or ChatGPT APIs When you call Gemini LLM using the GEMINI SDK, you’re using a serverless endpoint . Google’s infrastructure automatically: ● Spins up LLM inference engines, ● Loads the model weights, ● Processes your prompt, ● Sends back the output, ● And tears down the computer — all within milliseconds. You didn’t manage the server — you just called the API. Advantages of Serverless APIs: ● Zero infrastructure management — just write code. ● Cost-effective — pay only for usage. ● Elastic scalability — handles 1 or 1 million LLM calls without you doing anything. ● Ideal for event-driven systems (e.g., AI chatbots, summarization tools, etc.) Disadvantages: ● Cold starts — slight delay if the function hasn’t been invoked recently. ● Less control over memory, GPU placement, or warm-up optimization. ● You rely on the provider’s platform (vendor lock-in).",
+          "source_page_numbers": [
+            10
+          ],
+          "rationale": "Direct Serverless definition: cloud-managed on-demand execution and usage-based billing."
+        }
+      ],
+      "relevance_judgments": [
+        {
+          "index_coordinate": "8/3",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-8-chunk-3",
+          "grade": 2,
+          "rationale": "High-level contrast framing of Serverful versus Serverless infrastructure."
+        },
+        {
+          "index_coordinate": "9/0",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-9-chunk-0",
+          "grade": 1,
+          "rationale": "Approved Broad Policy: Serverful baseline is meaningful supporting context, not a standalone Serverless answer."
+        },
+        {
+          "index_coordinate": "9/1",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-9-chunk-1",
+          "grade": 1,
+          "rationale": "Supporting Serverful implementation and operational context."
+        },
+        {
+          "index_coordinate": "9/2",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-9-chunk-2",
+          "grade": 2,
+          "rationale": "Directly contrasts Serverful drawbacks with Serverless on-demand execution."
+        },
+        {
+          "index_coordinate": "9/3",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-9-chunk-3",
+          "grade": 1,
+          "rationale": "Supporting transition/context for Serverless APIs."
+        },
+        {
+          "index_coordinate": "10/0",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-10-chunk-0",
+          "grade": 2,
+          "rationale": "Direct operational definition: cloud-managed on-demand execution and no idle waiting charge."
+        },
+        {
+          "index_coordinate": "10/1",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-10-chunk-1",
+          "grade": 1,
+          "rationale": "Supporting Serverless example and advantages."
+        },
+        {
+          "index_coordinate": "10/2",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-10-chunk-2",
+          "grade": 1,
+          "rationale": "Supporting trade-offs and conclusion context."
+        }
+      ],
+      "retrieval_snapshots": {
+        "original_top3": [
+          "9/0",
+          "10/0",
+          "10/1"
+        ],
+        "original_grades": [
+          1,
+          2,
+          1
+        ],
+        "diversified_top3": [
+          "9/0",
+          "10/0",
+          "9/2"
+        ],
+        "diversified_grades": [
+          1,
+          2,
+          2
+        ]
+      }
+    },
+    {
+      "query_id": "Q4",
+      "topic": "HTTP 403 Forbidden",
+      "query_text": null,
+      "query_text_status": "not_preserved_in_available_historical_audit_artifacts",
+      "query_text_note": "The audit preserves the topic label and result snapshot, but not the verbatim original query.",
+      "corpus_relevant_chunk_count": 1,
+      "canonical_gold_passages": [
+        {
+          "passage_id": "Q4-P1",
+          "canonical_text": "403 Forbidden → You don’t have permission to access this resource.",
+          "source_page_numbers": [
+            16
+          ],
+          "rationale": "Verbatim source-PDF definition of HTTP 403 Forbidden."
+        }
+      ],
+      "relevance_judgments": [
+        {
+          "index_coordinate": "16/1",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-16-chunk-1",
+          "grade": 2,
+          "rationale": "Contains the verbatim 403 definition; 16/0 ends at 400 Bad Request."
+        }
+      ],
+      "legacy_coordinate_correction": {
+        "old_coordinate": "16/0",
+        "new_coordinate": "16/1",
+        "reason": "Full stored-text audit established that 16/0 contains no 403 definition; 16/1 contains the exact source definition."
+      },
+      "retrieval_snapshots": {
+        "original_top3": [
+          "15/1",
+          "15/2",
+          "16/1"
+        ],
+        "original_grades": [
+          0,
+          0,
+          2
+        ],
+        "diversified_top3": [
+          "15/1",
+          "16/1",
+          "13/2"
+        ],
+        "diversified_grades": [
+          0,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "query_id": "Q5",
+      "topic": "HTTP Status Codes",
+      "query_text": null,
+      "query_text_status": "not_preserved_in_available_historical_audit_artifacts",
+      "query_text_note": "The audit preserves the topic label and result snapshot, but not the verbatim original query.",
+      "corpus_relevant_chunk_count": 4,
+      "canonical_gold_passages": [
+        {
+          "passage_id": "Q5-P1",
+          "canonical_text": "What is an HTTP Status Code? Whenever a client (like your browser or Python script) sends a request to a server, the server responds with more than just the data — It also sends a three-digit status code that tells you what happened to your request. These codes help you understand: ● Whether the request was successful ● If there was an error ● Or if some other action is needed Types of HTTP Status Codes: 1xx – Informational These codes indicate that the request has been received and is still being processed. ● 100 Continue → The server has received the request headers and is waiting for the body. 2xx – Success These codes mean the request was successfully received, understood, and processed. 3xx – Redirection These codes indicate that further action is needed to complete the request. ● 301 Moved Permanently → The requested page or resource has been moved to a new URL. ● 302 Found → Temporarily redirected to another resource. 4xx – Client Errors These codes mean there was something wrong with the client’s request (e.g., bad input, unauthorized access). ● 400 Bad Request → The request was malformed or missing required data. ● 401 Unauthorized → You need to provide a valid API key or credentials. ● 403 Forbidden → You don’t have permission to access this resource. ● 404 Not Found → The requested resource doesn’t exist. 5xx – Server Errors These codes indicate that something went wrong on the server’s side , not yours. ● 500 Internal Server Error → The server had an unexpected issue. ● 503 Service Unavailable → The server is currently overloaded or under maintenance.",
+          "source_page_numbers": [
+            15,
+            16
+          ],
+          "rationale": "Source-PDF explanation of HTTP status codes and their classes/examples."
+        }
+      ],
+      "relevance_judgments": [
+        {
+          "index_coordinate": "15/1",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-15-chunk-1",
+          "grade": 2,
+          "rationale": "Direct definition of HTTP status codes and their purpose."
+        },
+        {
+          "index_coordinate": "15/2",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-15-chunk-2",
+          "grade": 1,
+          "rationale": "Supporting 1xx/2xx class examples."
+        },
+        {
+          "index_coordinate": "16/0",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-16-chunk-0",
+          "grade": 1,
+          "rationale": "Supporting status-code examples including 200, 201, 301, 302, 400."
+        },
+        {
+          "index_coordinate": "16/1",
+          "vector_id": "ab56ef89-c787-470c-b796-7d4b9fcdb2ee-page-16-chunk-1",
+          "grade": 1,
+          "rationale": "Supporting 4xx status-code examples; Q4 direct-answer judgment is maintained separately."
+        }
+      ],
+      "retrieval_snapshots": {
+        "original_top3": [
+          "15/1",
+          "15/2",
+          "16/0"
+        ],
+        "original_grades": [
+          2,
+          1,
+          1
+        ],
+        "diversified_top3": [
+          "15/1",
+          "16/0",
+          "13/2"
+        ],
+        "diversified_grades": [
+          2,
+          1,
+          0
+        ]
+      }
+    }
+  ],
+  "limitations": [
+    "Verbatim historical query prompts were not present in available audit artifacts; query_text is null. The snapshot cannot replay the exact original query embedding requests.",
+    "The 19 judgments are chunk-level and can be affected by overlap between indexed chunks.",
+    "Page/chunk coordinates are index-version mappings, not canonical ground-truth identities.",
+    "Only five evaluation queries are included."
+  ]
+}
