@@ -25,6 +25,7 @@ from vector_store import (
     get_document_vector_metadata,
     delete_vectors,
     list_document_vector_ids,
+    verify_document_absence,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -33,7 +34,7 @@ logger = logging.getLogger("revon-policy-chatbot")
 app = FastAPI(
     title="RevOn Policy AI Chatbot",
     description="AI-powered policy chatbot for RevOn",
-    version="1.4.0",
+    version="1.4.1",
 )
 
 
@@ -365,6 +366,90 @@ def delete_document(
             },
         )
     
+
+@app.post("/api/v1/documents/delete/verify-absence")
+def verify_deleted_document_absence(
+    document_id: str = Form(...),
+    logical_document_id: str = Form(...),
+    version: int = Form(...),
+    expected_vectors: int = Form(...),
+    request_id: str = Form(...),
+    _: None = Depends(verify_admin_token),
+):
+    """
+    Read-only reconciliation check after WordPress has a persisted delete
+    operation with an ambiguous backend outcome.
+
+    This endpoint does not perform deletion and cannot prove that this
+    particular request caused the absence. WordPress must only call it when
+    its durable operation ledger already contains a prior delete attempt.
+    """
+    document_id = validate_identifier(document_id, "document_id")
+    logical_document_id = validate_identifier(
+        logical_document_id, "logical_document_id"
+    )
+    request_id = validate_identifier(request_id, "request_id")
+
+    if version < 1 or expected_vectors < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="version and expected_vectors must be positive.",
+        )
+
+    try:
+        result = verify_document_absence(document_id)
+
+        if result.get("verified_absence") is not True:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Document vectors are still present.",
+                    "document_id": document_id,
+                    "remaining_vectors": result["remaining_vectors"],
+                    "reconciliation_required": True,
+                },
+            )
+
+        return {
+            "status": "success",
+            "document_id": document_id,
+            "logical_document_id": logical_document_id,
+            "version": version,
+            "request_id": request_id,
+            "outcome": "already_absent",
+            "deleted_vectors": 0,
+            "remaining_vectors": 0,
+            "verified": True,
+            "verified_absence": True,
+            "message": (
+                "No vectors remain for this document. This read-only result "
+                "must be reconciled against the prior WordPress delete operation."
+            ),
+        }
+
+    except HTTPException:
+        raise
+
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+    except Exception:
+        logger.exception(
+            "Document absence verification failed. request_id=%s document_id=%s",
+            request_id,
+            document_id,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "Unable to verify document absence in Pinecone.",
+                "document_id": document_id,
+                "request_id": request_id,
+                "reconciliation_required": True,
+            },
+        )
+
+
 
 @app.post("/api/v1/documents/activate")
 def activate_document_version(

@@ -1,6 +1,4 @@
 import os
-from urllib import response
-
 import httpx
 from dotenv import load_dotenv
 
@@ -730,4 +728,25 @@ def delete_vectors(document_id: str):
         "status": "success",
         "document_id": document_id,
         "message": "Document vectors deleted successfully"
+    }
+
+def verify_document_absence(document_id: str) -> dict:
+    """
+    Verify that no Pinecone vector IDs remain for this document.
+
+    This is deliberately a read-only reconciliation primitive. It does not
+    prove who deleted the vectors or when they were deleted. WordPress must
+    require a previously persisted delete operation before accepting this
+    result as completion of an ambiguous delete attempt.
+    """
+    if not isinstance(document_id, str) or not document_id.strip():
+        raise ValueError("Document ID is required")
+
+    vector_ids = list_document_vector_ids(document_id.strip())
+    return {
+        "document_id": document_id.strip(),
+        "remaining_vectors": len(vector_ids),
+        "verified_absence": len(vector_ids) == 0,
+        "verified": len(vector_ids) == 0,
+        "vector_ids": vector_ids,
     }
