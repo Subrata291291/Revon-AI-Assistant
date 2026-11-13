@@ -17,10 +17,15 @@ from fastapi import (
     Query,
     Request,
 )
+from pathlib import Path
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-load_dotenv()
+_dotenv_path = Path(__file__).resolve().parent / ".env"
+if _dotenv_path.is_file():
+    load_dotenv(dotenv_path=_dotenv_path)
+else:
+    load_dotenv()
 
 from ingestion_service import ingest_pdf
 from vector_store import (
@@ -46,8 +51,19 @@ _chat_requests: dict[str, Deque[float]] = defaultdict(deque)
 _chat_rate_lock = threading.Lock()
 
 
+class ChatHistoryItem(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$", description="Role of the speaker")
+    content: str = Field(min_length=1, max_length=4000, description="Message text content")
+
+
 class PublicChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
+    conversation_id: str | None = Field(default=None, max_length=100)
+    history: list[ChatHistoryItem] | None = Field(default=None)
+
+
+class ChatResetRequest(BaseModel):
+    conversation_id: str = Field(min_length=1, max_length=100)
 
 
 def verify_chat_token(
@@ -93,7 +109,8 @@ def enforce_chat_rate_limit(visitor_key: str) -> None:
         while queue and queue[0] <= cutoff:
             queue.popleft()
 
-        if len(queue) >= CHAT_RATE_LIMIT:
+        rate_limit = int(os.getenv("CHAT_RATE_LIMIT_PER_MINUTE", str(CHAT_RATE_LIMIT)))
+        if len(queue) >= rate_limit:
             raise HTTPException(
                 status_code=429,
                 detail="Too many chat requests. Please try again shortly.",
@@ -827,9 +844,19 @@ def public_policy_chat(
     try:
         # Import lazily so document-management endpoints remain independent
         # from chat provider initialization and tests can isolate the service.
-        from retrieval_service import answer_policy_question
+        from retrieval_service import answer_conversational_question
 
-        result = answer_policy_question(question=question, top_k=5)
+        client_history = (
+            [h.model_dump() for h in payload.history]
+            if payload.history else None
+        )
+
+        result = answer_conversational_question(
+            question=question,
+            conversation_id=payload.conversation_id,
+            client_history=client_history,
+            top_k=5,
+        )
         answer = result.get("answer")
         if not isinstance(answer, str) or not answer.strip():
             raise RuntimeError("The policy answer service returned no answer.")
@@ -847,9 +874,11 @@ def public_policy_chat(
 
         return {
             "status": "success",
+            "conversation_id": result.get("conversation_id"),
             "answer": answer.strip(),
             "sources": sources,
             "total_matches": int(result.get("total_matches", len(sources))),
+            "is_policy_query": bool(result.get("is_policy_query", False)),
         }
 
     except ValueError as error:
@@ -861,3 +890,18 @@ def public_policy_chat(
             detail="The policy assistant is temporarily unavailable. Please try again.",
         )
 
+
+@app.post("/api/v1/chat/reset")
+def reset_public_policy_chat(
+    payload: ChatResetRequest,
+    _: None = Depends(verify_chat_token),
+):
+    """Reset an active conversation session on visitor request."""
+    from conversation_service import conversation_manager
+
+    cleared = conversation_manager.clear(payload.conversation_id)
+    return {
+        "status": "success",
+        "conversation_id": payload.conversation_id,
+        "cleared": cleared,
+    }
