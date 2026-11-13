@@ -463,7 +463,7 @@ def stream_conversational_question(
             words = DOMAIN_REFUSAL_MESSAGE.split(" ")
             for i, word in enumerate(words):
                 chunk = word + (" " if i < len(words) - 1 else "")
-                yield f"event: token\ndata: {json.dumps({'content': chunk})}\n\n"
+                yield f"event: token\ndata: {json.dumps({'content': chunk, 'token': chunk})}\n\n"
 
             conversation_manager.record_turn(
                 conversation_id=active_cid,
@@ -471,7 +471,7 @@ def stream_conversational_question(
                 assistant_message=DOMAIN_REFUSAL_MESSAGE,
                 sources=None
             )
-            yield f"event: complete\ndata: {json.dumps({'conversation_id': active_cid, 'status': 'success', 'is_policy_query': False})}\n\n"
+            yield f"event: complete\ndata: {json.dumps({'conversation_id': active_cid, 'status': 'success', 'is_policy_query': False, 'answer': DOMAIN_REFUSAL_MESSAGE})}\n\n"
             return
 
         # 5. Greetings, acknowledgements, capabilities (no retrieval)
@@ -485,7 +485,7 @@ def stream_conversational_question(
             full_answer = []
             for token in generate_chat_stream(messages=messages, temperature=0.2, max_tokens=600):
                 full_answer.append(token)
-                yield f"event: token\ndata: {json.dumps({'content': token})}\n\n"
+                yield f"event: token\ndata: {json.dumps({'content': token, 'token': token})}\n\n"
 
             final_text = "".join(full_answer).strip()
             conversation_manager.record_turn(
@@ -494,7 +494,7 @@ def stream_conversational_question(
                 assistant_message=final_text,
                 sources=None
             )
-            yield f"event: complete\ndata: {json.dumps({'conversation_id': active_cid, 'status': 'success', 'is_policy_query': False})}\n\n"
+            yield f"event: complete\ndata: {json.dumps({'conversation_id': active_cid, 'status': 'success', 'is_policy_query': False, 'answer': final_text})}\n\n"
             return
 
         # 6. Domain questions: Retrieve context from Pinecone
@@ -541,7 +541,7 @@ Answer the user question based on the policy context above. Cite sources using [
         full_answer = []
         for token in generate_chat_stream(messages=messages, temperature=0.2, max_tokens=1500):
             full_answer.append(token)
-            yield f"event: token\ndata: {json.dumps({'content': token})}\n\n"
+            yield f"event: token\ndata: {json.dumps({'content': token, 'token': token})}\n\n"
 
         final_text = "".join(full_answer).strip()
         conversation_manager.record_turn(
@@ -550,7 +550,7 @@ Answer the user question based on the policy context above. Cite sources using [
             assistant_message=final_text,
             sources=sources if sources else None
         )
-        yield f"event: complete\ndata: {json.dumps({'conversation_id': active_cid, 'status': 'success', 'is_policy_query': bool(sources)})}\n\n"
+        yield f"event: complete\ndata: {json.dumps({'conversation_id': active_cid, 'status': 'success', 'is_policy_query': bool(sources), 'answer': final_text})}\n\n"
 
     except Exception as err:
         logger.exception("Error in stream_conversational_question: %s", err)
