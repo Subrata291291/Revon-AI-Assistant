@@ -1063,6 +1063,7 @@ class TestConversationalMemory(unittest.TestCase):
             "search_query": None,
             "reason": "world trivia"
         })
+        mock_chat_llm.return_value = "I am RevOn's dedicated AI assistant and cannot assist with world trivia. Please feel free to ask anything about RevOn Business Solutions."
         res2 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "What is the capital of France?", "conversation_id": cid})
         self.assertEqual(res2.status_code, 200)
         data2 = res2.json()
@@ -1143,6 +1144,58 @@ class TestConversationalMemory(unittest.TestCase):
         hist_b = conversation_manager.get(cid_b).get_history_for_prompt()
         self.assertTrue(any("Bob" in m["content"] for m in hist_b))
         self.assertFalse(any("Alice" in m["content"] for m in hist_b))
+
+    @patch("retrieval_service.generate_chat_response")
+    @patch("retrieval_service.generate_response")
+    def test_conversational_what_is_my_name(self, mock_router_llm, mock_chat_llm):
+        """Conversational query like 'what is my name?' is handled generatively without retrieval or static canned response."""
+        # Turn 1: User asks "what is my name?" without intro
+        mock_router_llm.return_value = json.dumps({
+            "intent": "conversational",
+            "is_relevant": True,
+            "requires_retrieval": False,
+            "resolved_question": "what is my name?",
+            "search_query": None,
+            "reason": "conversational personal question"
+        })
+        mock_chat_llm.return_value = "I don't think you've told me your name yet! What should I call you?"
+        res1 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "what is my name?"})
+        self.assertEqual(res1.status_code, 200)
+        data1 = res1.json()
+        self.assertEqual(data1["sources"], [])
+        self.assertFalse(data1["is_policy_query"])
+        self.assertIn("told me your name", data1["answer"])
+        cid = data1["conversation_id"]
+
+        # Turn 2: User says "My name is Subrata"
+        mock_router_llm.return_value = json.dumps({
+            "intent": "conversational",
+            "is_relevant": True,
+            "requires_retrieval": False,
+            "resolved_question": "My name is Subrata",
+            "search_query": None,
+            "reason": "user shares name"
+        })
+        mock_chat_llm.return_value = "Nice to meet you, Subrata! How can I assist you with RevOn today?"
+        res2 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "My name is Subrata", "conversation_id": cid})
+        self.assertEqual(res2.status_code, 200)
+
+        # Turn 3: User asks "what is my name?" again
+        mock_router_llm.return_value = json.dumps({
+            "intent": "conversational",
+            "is_relevant": True,
+            "requires_retrieval": False,
+            "resolved_question": "what is my name?",
+            "search_query": None,
+            "reason": "conversational question asking for name with context"
+        })
+        mock_chat_llm.return_value = "Your name is Subrata! How can I help you today?"
+        res3 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "what is my name?", "conversation_id": cid})
+        self.assertEqual(res3.status_code, 200)
+        data3 = res3.json()
+        self.assertEqual(data3["sources"], [])
+        self.assertFalse(data3["is_policy_query"])
+        self.assertIn("Subrata", data3["answer"])
 
 
 if __name__ == "__main__":

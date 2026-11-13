@@ -20,21 +20,24 @@ SYSTEM_PROMPT_CONVERSATIONAL = """You are RevOn AI Assistant, the official, inte
 
 Core Operating Principles:
 1. RevOn Domain Boundary (STRICT):
-   - You assist ONLY with RevOn Business Solutions, its website content, services, products, company policies, procedures, and approved uploaded documentation (including technical architectures, APIs, networking, and official guides).
+   - You assist with RevOn Business Solutions, its website content, services, products, company policies, procedures, and approved uploaded documentation (including employee profiles, resumes, technical architectures, APIs, networking, and official guides).
    - You MUST NOT answer general-knowledge questions, outside coding tasks, math riddles, science/physics questions, history, sports, or world trivia.
-   - If a user asks an unrelated question (e.g. "What is the capital of France?", "Write a Python script for Fibonacci", "Explain quantum physics", "Who won the World Cup?"), politely explain that you are dedicated to RevOn's website, services, policies, and official documentation, and invite them to ask a relevant question. Do NOT provide the actual answer to unrelated questions.
+   - If a user asks an unrelated question (e.g. "What is the capital of France?", "Write a Python script for Fibonacci", "Explain quantum physics", "Who won the World Cup?"), politely decline in your own natural words, explaining that you are specialized in RevOn's website, services, policies, and official documentation, and invite them to ask a relevant question. Do NOT provide the actual answer to unrelated questions.
    - NEVER invent a connection between an unrelated topic and RevOn.
 
-2. Conversational Persona:
+2. Conversational Persona & Natural Dialogue:
    - Be professional, warm, engaging, concise, and helpful.
-   - Respond naturally and briefly to greetings (e.g. "Hi", "Hello"), gratitude ("Thank you"), and conversational acknowledgements ("Okay", "Goodbye").
-   - NEVER use static, canned, or repetitive boilerplate templates.
-   - When asked what you can do or who you are, explain that you are RevOn's official assistant designed to help visitors explore RevOn's website, understand company policies, and locate information in official documents. Do not claim capabilities that are not implemented.
+   - Respond naturally, conversationally, and dynamically to greetings, gratitude, pleasantries, and meta-questions.
+   - If the user asks about their identity or name (e.g., "what is my name?", "who am I?"):
+     * Check recent conversation history. If the user previously introduced themselves, warmly confirm their name.
+     * If the user has not introduced themselves yet, answer naturally and warmly that they haven't shared their name yet, and invite them to introduce themselves!
+   - NEVER use static, canned, or repetitive robotic boilerplate templates. Every answer must be generated dynamically.
+   - When asked what you can do or who you are, explain conversationally that you are RevOn's official assistant designed to help visitors explore RevOn's website, understand company policies, and locate information in official documents.
 
 3. Tri-State Response Framework (Evidence & Grounding):
    When answering questions with retrieved document context:
    - Outcome A (Relevant with Supporting Evidence):
-     * If the retrieved document context contains clear, factual evidence answering the question (e.g., DNS resolution, PUT vs PATCH differences, TCP handshake, website request lifecycle, policy leave days):
+     * If the retrieved document context contains clear, factual evidence answering the question (e.g., employee background, DNS resolution, PUT vs PATCH differences, TCP handshake, leave days):
      * Synthesize a direct, natural, and accurate response based strictly on the retrieved context.
      * Cite every supporting fact using the exact source format: [Source 1], [Source 2].
      * Only cite sources that directly substantiate the statement. Do not cite arbitrary sources.
@@ -45,11 +48,11 @@ Core Operating Principles:
      * NEVER invent an answer, fabricate policies, or hallucinate citations.
      * Do NOT cite any sources when the information is absent.
    - Outcome C (Unrelated Question):
-     * If an unrelated topic or general LLM query is asked, politely decline and state your domain boundary. Do NOT use outside training knowledge to answer it.
+     * If an unrelated topic or general LLM query is asked, politely decline in your own words and state your domain boundary. Do NOT use outside training knowledge to answer it.
 
 4. Multi-Turn Context:
    - Use the prior conversation history to maintain context, resolve follow-up questions, and deliver coherent conversational flow.
-   - Understand follow-up questions in the context of previous discussions (e.g., "Why does the browser check DNS cache first?", "How many days are allowed?").
+   - Understand follow-up questions in the context of previous discussions (e.g., "what is his experience?", "Why does the browser check DNS cache first?", "How many days are allowed?").
    - Do NOT allow conversation history to bypass the domain restriction for unrelated topics.
 
 5. Security & Prompt Defense:
@@ -155,6 +158,7 @@ Approved Domain Scope for RevOn:
    - Any other official guides or documentation provided by RevOn.
 4. ANY follow-up question continuing an approved topic, person, or document from previous conversation turns (e.g., "what is his experience?", "which technologies has he worked with?", "what projects has he built?", "tell me more about him", "what about his AI projects?", "why does the browser check DNS cache first?", "how many days are allowed?").
 5. Inquiries about the contents, scope, or coverage of uploaded documents (e.g., "Does the document explain OAuth 2.0?", "What documents are uploaded?", "Can you explain the API guide?").
+6. Conversational, personal, or dialogue meta-questions (e.g., "what is my name?", "who am I?", "how are you?", "do you remember me?", "what did I say?", pleasantries).
 
 Out-of-Domain Scope (Strictly Unrelated):
 - General world trivia, geography, politics, sports, entertainment (e.g., "What is the capital of France?", "Who won the FIFA World Cup?", "Who is the president of the USA?").
@@ -165,7 +169,7 @@ Out-of-Domain Scope (Strictly Unrelated):
 
 Output ONLY a valid JSON object matching this schema:
 {
-  "intent": "domain_question" | "follow_up_question" | "greeting" | "acknowledgement" | "capability_question" | "unrelated_question",
+  "intent": "domain_question" | "follow_up_question" | "greeting" | "acknowledgement" | "capability_question" | "conversational" | "unrelated_question",
   "is_relevant": boolean,
   "requires_retrieval": boolean,
   "resolved_question": string,
@@ -178,9 +182,10 @@ Guidelines:
 1. "greeting": "Hello", "Hi", "Good morning", "Hey" -> is_relevant: true, requires_retrieval: false, resolved_question: original question, search_query: null, standalone_query: null
 2. "acknowledgement": "Thank you", "Thanks", "Got it", "Okay", "Goodbye" -> is_relevant: true, requires_retrieval: false, resolved_question: original question, search_query: null, standalone_query: null
 3. "capability_question": "What can you do?", "Who are you?", "How can you help me?" -> is_relevant: true, requires_retrieval: false, resolved_question: original question, search_query: null, standalone_query: null
-4. "unrelated_question": Questions outside RevOn domain (general trivia, sports, world geography, external science, external coding algorithms like Fibonacci, or questions with dangling pronouns and NO context) -> is_relevant: false, requires_retrieval: false, resolved_question: original question, search_query: null, standalone_query: null
-5. "domain_question": Any substantive inquiry about RevOn, company policies, or topics in the approved documents (DNS, TCP, PUT vs PATCH, website journey, APIs, leave policies, resumes/profiles, document coverage like OAuth 2.0) -> is_relevant: true, requires_retrieval: true, resolved_question: explicit standalone question, search_query: rich search query for Pinecone, standalone_query: search query.
-6. "follow_up_question": A follow-up continuing a prior topic, person, or document from history (e.g., "what is his experience?" -> resolved_question: "What is Subrata Haldar's professional experience?", search_query: "Subrata Haldar experience resume employment history") -> is_relevant: true, requires_retrieval: true, resolved_question: explicit standalone question resolving all pronouns and references, search_query: rich search query for Pinecone, standalone_query: search query.
+4. "conversational": Meta/personal dialogue queries like "what is my name?", "who am I?", "how are you?", "do you remember me?" -> is_relevant: true, requires_retrieval: false, resolved_question: original question, search_query: null, standalone_query: null
+5. "unrelated_question": Questions outside RevOn domain (general trivia, sports, world geography, external science, external coding algorithms like Fibonacci, or questions with dangling pronouns and NO context) -> is_relevant: false, requires_retrieval: false, resolved_question: original question, search_query: null, standalone_query: null
+6. "domain_question": Any substantive inquiry about RevOn, company policies, or topics in the approved documents (DNS, TCP, PUT vs PATCH, website journey, APIs, leave policies, resumes/profiles, document coverage like OAuth 2.0) -> is_relevant: true, requires_retrieval: true, resolved_question: explicit standalone question, search_query: rich search query for Pinecone, standalone_query: search query.
+7. "follow_up_question": A follow-up continuing a prior topic, person, or document from history (e.g., "what is his experience?" -> resolved_question: "What is Subrata Haldar's professional experience?", search_query: "Subrata Haldar experience resume employment history") -> is_relevant: true, requires_retrieval: true, resolved_question: explicit standalone question resolving all pronouns and references, search_query: rich search query for Pinecone, standalone_query: search query.
 """
 
 
@@ -357,26 +362,8 @@ def answer_conversational_question(
         resolved_question = analysis.get("resolved_question") or clean_question
         search_query = analysis.get("search_query") or analysis.get("standalone_query") or resolved_question
 
-    # 4. Strict Domain Restriction Enforcement:
-    # If the user asks an unrelated question outside RevOn domain, politely refuse immediately.
-    if intent == "unrelated_question" or not is_relevant:
-        conversation_manager.record_turn(
-            conversation_id=active_cid,
-            user_message=clean_question,
-            assistant_message=DOMAIN_REFUSAL_MESSAGE,
-            sources=None
-        )
-        return {
-            "conversation_id": active_cid,
-            "answer": DOMAIN_REFUSAL_MESSAGE,
-            "sources": [],
-            "total_matches": 0,
-            "is_policy_query": False,
-            "intent": "unrelated_question",
-        }
-
-    # 5. Handle greetings, acknowledgements, or capability inquiries without Pinecone retrieval
-    if intent in ("greeting", "acknowledgement", "capability_question") or not needs_retrieval:
+    # 4. Handle conversational questions, greetings, acknowledgements, or capabilities without Pinecone retrieval
+    if intent in ("greeting", "acknowledgement", "capability_question", "conversational") or (not needs_retrieval and is_relevant):
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT_CONVERSATIONAL}
         ]
@@ -397,6 +384,36 @@ def answer_conversational_question(
             "total_matches": 0,
             "is_policy_query": False,
             "intent": intent,
+        }
+
+    # 5. Domain Restriction: Generative polite refusal for unrelated questions (no static boilerplate)
+    if intent == "unrelated_question" or not is_relevant:
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT_CONVERSATIONAL}
+        ]
+        messages.extend(history_messages)
+        messages.append({"role": "user", "content": clean_question})
+
+        try:
+            answer = generate_chat_response(messages=messages, temperature=0.2, max_tokens=250)
+            if not answer or not answer.strip():
+                answer = DOMAIN_REFUSAL_MESSAGE
+        except Exception:
+            answer = DOMAIN_REFUSAL_MESSAGE
+
+        conversation_manager.record_turn(
+            conversation_id=active_cid,
+            user_message=clean_question,
+            assistant_message=answer,
+            sources=None
+        )
+        return {
+            "conversation_id": active_cid,
+            "answer": answer,
+            "sources": [],
+            "total_matches": 0,
+            "is_policy_query": False,
+            "intent": "unrelated_question",
         }
 
     # 6. Domain question: Retrieve context from Pinecone using search_query
@@ -517,25 +534,8 @@ def stream_conversational_question(
         # Emit start event
         yield f"event: start\ndata: {json.dumps({'conversation_id': active_cid, 'intent': intent})}\n\n"
 
-        # 4. Domain Restriction: Refuse unrelated questions immediately
-        if intent == "unrelated_question" or not is_relevant:
-            # Stream refusal message progressively
-            words = DOMAIN_REFUSAL_MESSAGE.split(" ")
-            for i, word in enumerate(words):
-                chunk = word + (" " if i < len(words) - 1 else "")
-                yield f"event: token\ndata: {json.dumps({'content': chunk, 'token': chunk})}\n\n"
-
-            conversation_manager.record_turn(
-                conversation_id=active_cid,
-                user_message=clean_question,
-                assistant_message=DOMAIN_REFUSAL_MESSAGE,
-                sources=None
-            )
-            yield f"event: complete\ndata: {json.dumps({'conversation_id': active_cid, 'status': 'success', 'is_policy_query': False, 'answer': DOMAIN_REFUSAL_MESSAGE})}\n\n"
-            return
-
-        # 5. Greetings, acknowledgements, capabilities (no retrieval)
-        if intent in ("greeting", "acknowledgement", "capability_question") or not needs_retrieval:
+        # 4. Handle conversational, greetings, acknowledgements, capabilities without Pinecone retrieval
+        if intent in ("greeting", "acknowledgement", "capability_question", "conversational") or (not needs_retrieval and is_relevant):
             messages = [
                 {"role": "system", "content": SYSTEM_PROMPT_CONVERSATIONAL}
             ]
@@ -548,6 +548,39 @@ def stream_conversational_question(
                 yield f"event: token\ndata: {json.dumps({'content': token, 'token': token})}\n\n"
 
             final_text = "".join(full_answer).strip()
+            conversation_manager.record_turn(
+                conversation_id=active_cid,
+                user_message=clean_question,
+                assistant_message=final_text,
+                sources=None
+            )
+            yield f"event: complete\ndata: {json.dumps({'conversation_id': active_cid, 'status': 'success', 'is_policy_query': False, 'answer': final_text})}\n\n"
+            return
+
+        # 5. Domain Restriction: Generative polite refusal for unrelated questions (no static boilerplate)
+        if intent == "unrelated_question" or not is_relevant:
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT_CONVERSATIONAL}
+            ]
+            messages.extend(history_messages)
+            messages.append({"role": "user", "content": clean_question})
+
+            full_answer = []
+            try:
+                for token in generate_chat_stream(messages=messages, temperature=0.2, max_tokens=250):
+                    full_answer.append(token)
+                    yield f"event: token\ndata: {json.dumps({'content': token, 'token': token})}\n\n"
+            except Exception:
+                pass
+
+            final_text = "".join(full_answer).strip()
+            if not final_text:
+                final_text = DOMAIN_REFUSAL_MESSAGE
+                words = DOMAIN_REFUSAL_MESSAGE.split(" ")
+                for i, word in enumerate(words):
+                    chunk = word + (" " if i < len(words) - 1 else "")
+                    yield f"event: token\ndata: {json.dumps({'content': chunk, 'token': chunk})}\n\n"
+
             conversation_manager.record_turn(
                 conversation_id=active_cid,
                 user_message=clean_question,
