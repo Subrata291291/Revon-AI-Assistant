@@ -773,5 +773,377 @@ class TestIntentAnalysisResult(unittest.TestCase):
         self.assertIn("RevOn", DOMAIN_REFUSAL_MESSAGE)
 
 
+# ===========================================================================
+# 6. CONTEXT-AWARE FOLLOW-UP & SHORT-TERM MEMORY TESTS
+# ===========================================================================
+
+class TestConversationalMemory(unittest.TestCase):
+    """
+    Automated verification for context-aware follow-up resolution, pronoun
+    understanding, multi-turn memory, topic switching, and session isolation.
+    """
+
+    def setUp(self):
+        self.client = TestClient(app)
+        self.patcher = patch.dict(os.environ, ENV)
+        self.patcher.start()
+        # Clean conversation sessions before each test
+        conversation_manager._sessions.clear()
+
+    def tearDown(self):
+        self.patcher.stop()
+        conversation_manager._sessions.clear()
+
+    @patch("retrieval_service.retrieve_context")
+    @patch("retrieval_service.generate_chat_response")
+    @patch("retrieval_service.generate_response")
+    def test_follow_up_his_experience(self, mock_router_llm, mock_chat_llm, mock_retrieve):
+        """Test 1: 'What is his experience?' resolves to Subrata Haldar's experience and retrieves resume."""
+        # Turn 1
+        mock_router_llm.return_value = json.dumps({
+            "intent": "domain_question",
+            "is_relevant": True,
+            "requires_retrieval": True,
+            "resolved_question": "Who is Subrata Haldar?",
+            "search_query": "Subrata Haldar profile",
+            "reason": "Resume question"
+        })
+        mock_retrieve.return_value = {
+            "context": "[Source 1]\nFilename: Subrata_Resume.pdf\nPage: 1\nContent: Subrata Haldar is a Gen AI Developer.",
+            "sources": [{"filename": "Subrata_Resume.pdf", "page_number": 1, "score": 0.95}],
+            "total_matches": 1
+        }
+        mock_chat_llm.return_value = "Subrata Haldar is a Gen AI Developer [Source 1]."
+
+        res1 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "Who is Subrata Haldar?"})
+        self.assertEqual(res1.status_code, 200)
+        cid = res1.json()["conversation_id"]
+        self.assertIsNotNone(cid)
+
+        # Turn 2: 'What is his experience?' with same conversation_id
+        mock_router_llm.return_value = json.dumps({
+            "intent": "follow_up_question",
+            "is_relevant": True,
+            "requires_retrieval": True,
+            "resolved_question": "What is Subrata Haldar's professional experience?",
+            "search_query": "Subrata Haldar professional experience years employment",
+            "reason": "Pronoun 'his' resolved to Subrata Haldar from previous turn"
+        })
+        mock_retrieve.return_value = {
+            "context": "[Source 1]\nFilename: Subrata_Resume.pdf\nPage: 1\nContent: Over 5 years of software engineering experience in AI and full-stack development.",
+            "sources": [{"filename": "Subrata_Resume.pdf", "page_number": 1, "score": 0.93}],
+            "total_matches": 1
+        }
+        mock_chat_llm.return_value = "Subrata Haldar has over 5 years of experience in AI and full-stack development [Source 1]."
+
+        res2 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "What is his experience?", "conversation_id": cid})
+        self.assertEqual(res2.status_code, 200)
+        data2 = res2.json()
+        self.assertEqual(data2["conversation_id"], cid)
+        self.assertIn("5 years", data2["answer"])
+        self.assertIn("Source 1", data2["answer"])
+        self.assertTrue(data2["is_policy_query"])
+        self.assertEqual(len(data2["sources"]), 1)
+        self.assertEqual(data2["sources"][0]["filename"], "Subrata_Resume.pdf")
+
+    @patch("retrieval_service.retrieve_context")
+    @patch("retrieval_service.generate_chat_response")
+    @patch("retrieval_service.generate_response")
+    def test_follow_up_which_technologies(self, mock_router_llm, mock_chat_llm, mock_retrieve):
+        """Test 2: 'Which technologies has he worked with?' resolves to Subrata Haldar's technologies."""
+        # Turn 1
+        mock_router_llm.return_value = json.dumps({
+            "intent": "domain_question",
+            "is_relevant": True,
+            "requires_retrieval": True,
+            "resolved_question": "Who is Subrata Haldar?",
+            "search_query": "Subrata Haldar",
+            "reason": "profile"
+        })
+        mock_retrieve.return_value = {
+            "context": "[Source 1]\nFilename: Subrata_Resume.pdf\nPage: 1\nContent: Subrata Haldar is an AI Engineer.",
+            "sources": [{"filename": "Subrata_Resume.pdf", "page_number": 1, "score": 0.9}],
+            "total_matches": 1
+        }
+        mock_chat_llm.return_value = "Subrata Haldar is an AI Engineer [Source 1]."
+
+        res1 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "Who is Subrata Haldar?"})
+        cid = res1.json()["conversation_id"]
+
+        # Turn 2
+        mock_router_llm.return_value = json.dumps({
+            "intent": "follow_up_question",
+            "is_relevant": True,
+            "requires_retrieval": True,
+            "resolved_question": "Which technologies has Subrata Haldar worked with?",
+            "search_query": "Subrata Haldar technical skills technologies stack",
+            "reason": "pronoun resolution"
+        })
+        mock_retrieve.return_value = {
+            "context": "[Source 1]\nFilename: Subrata_Resume.pdf\nPage: 1\nContent: Skills: Python, FastAPI, LangChain, Pinecone, React.",
+            "sources": [{"filename": "Subrata_Resume.pdf", "page_number": 1, "score": 0.94}],
+            "total_matches": 1
+        }
+        mock_chat_llm.return_value = "Subrata Haldar has worked with Python, FastAPI, LangChain, and Pinecone [Source 1]."
+
+        res2 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "Which technologies has he worked with?", "conversation_id": cid})
+        self.assertEqual(res2.status_code, 200)
+        self.assertIn("Python", res2.json()["answer"])
+        self.assertTrue(res2.json()["is_policy_query"])
+
+    @patch("retrieval_service.retrieve_context")
+    @patch("retrieval_service.generate_chat_response")
+    @patch("retrieval_service.generate_response")
+    def test_follow_up_what_projects(self, mock_router_llm, mock_chat_llm, mock_retrieve):
+        """Test 3: 'What projects has he built?' resolves using resume evidence."""
+        mock_router_llm.return_value = json.dumps({
+            "intent": "domain_question",
+            "is_relevant": True,
+            "requires_retrieval": True,
+            "resolved_question": "Who is Subrata Haldar?",
+            "search_query": "Subrata Haldar",
+            "reason": "init"
+        })
+        mock_retrieve.return_value = {
+            "context": "[Source 1]\nFilename: Subrata_Resume.pdf\nPage: 1\nContent: Subrata Haldar profile.",
+            "sources": [{"filename": "Subrata_Resume.pdf", "page_number": 1, "score": 0.9}],
+            "total_matches": 1
+        }
+        mock_chat_llm.return_value = "Subrata Haldar is an AI developer [Source 1]."
+
+        res1 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "Who is Subrata Haldar?"})
+        cid = res1.json()["conversation_id"]
+
+        mock_router_llm.return_value = json.dumps({
+            "intent": "follow_up_question",
+            "is_relevant": True,
+            "requires_retrieval": True,
+            "resolved_question": "What projects has Subrata Haldar built?",
+            "search_query": "Subrata Haldar projects applications built",
+            "reason": "follow-up"
+        })
+        mock_retrieve.return_value = {
+            "context": "[Source 1]\nFilename: Subrata_Resume.pdf\nPage: 2\nContent: Built enterprise RAG chatbots and autonomous agents.",
+            "sources": [{"filename": "Subrata_Resume.pdf", "page_number": 2, "score": 0.91}],
+            "total_matches": 1
+        }
+        mock_chat_llm.return_value = "He built enterprise RAG chatbots and autonomous agents [Source 1]."
+
+        res2 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "What projects has he built?", "conversation_id": cid})
+        self.assertEqual(res2.status_code, 200)
+        self.assertIn("RAG chatbots", res2.json()["answer"])
+
+    @patch("retrieval_service.retrieve_context")
+    @patch("retrieval_service.generate_chat_response")
+    @patch("retrieval_service.generate_response")
+    def test_follow_up_tell_me_more(self, mock_router_llm, mock_chat_llm, mock_retrieve):
+        """Test 4: 'Tell me more about him.' understands the previous subject and provides additional information."""
+        mock_router_llm.return_value = json.dumps({
+            "intent": "domain_question",
+            "is_relevant": True,
+            "requires_retrieval": True,
+            "resolved_question": "Who is Subrata Haldar?",
+            "search_query": "Subrata Haldar",
+            "reason": "init"
+        })
+        mock_retrieve.return_value = {
+            "context": "[Source 1]\nFilename: Subrata_Resume.pdf\nPage: 1\nContent: Subrata Haldar background.",
+            "sources": [{"filename": "Subrata_Resume.pdf", "page_number": 1, "score": 0.9}],
+            "total_matches": 1
+        }
+        mock_chat_llm.return_value = "Subrata Haldar is a developer [Source 1]."
+
+        res1 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "Who is Subrata Haldar?"})
+        cid = res1.json()["conversation_id"]
+
+        mock_router_llm.return_value = json.dumps({
+            "intent": "follow_up_question",
+            "is_relevant": True,
+            "requires_retrieval": True,
+            "resolved_question": "Tell me more about Subrata Haldar's background and achievements.",
+            "search_query": "Subrata Haldar background achievements education",
+            "reason": "continuation"
+        })
+        mock_retrieve.return_value = {
+            "context": "[Source 1]\nFilename: Subrata_Resume.pdf\nPage: 1\nContent: Specialized in stateful LLM architectures.",
+            "sources": [{"filename": "Subrata_Resume.pdf", "page_number": 1, "score": 0.88}],
+            "total_matches": 1
+        }
+        mock_chat_llm.return_value = "Subrata has specialized in stateful LLM architectures [Source 1]."
+
+        res2 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "Tell me more about him.", "conversation_id": cid})
+        self.assertEqual(res2.status_code, 200)
+        self.assertIn("stateful LLM architectures", res2.json()["answer"])
+
+    @patch("retrieval_service.retrieve_context")
+    @patch("retrieval_service.generate_chat_response")
+    @patch("retrieval_service.generate_response")
+    def test_multiturn_three_turns_context(self, mock_router_llm, mock_chat_llm, mock_retrieve):
+        """Test 5: Turn 1 -> Turn 2 -> Turn 3 maintains context across all turns."""
+        mock_retrieve.return_value = {
+            "context": "[Source 1]\nFilename: Subrata_Resume.pdf\nPage: 1\nContent: Subrata Haldar resume data.",
+            "sources": [{"filename": "Subrata_Resume.pdf", "page_number": 1, "score": 0.9}],
+            "total_matches": 1
+        }
+
+        # Turn 1
+        mock_router_llm.return_value = json.dumps({
+            "intent": "domain_question",
+            "is_relevant": True,
+            "requires_retrieval": True,
+            "resolved_question": "Who is Subrata Haldar?",
+            "search_query": "Subrata Haldar",
+            "reason": "turn 1"
+        })
+        mock_chat_llm.return_value = "Subrata Haldar is an AI engineer [Source 1]."
+        res1 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "Who is Subrata Haldar?"})
+        cid = res1.json()["conversation_id"]
+
+        # Turn 2
+        mock_router_llm.return_value = json.dumps({
+            "intent": "follow_up_question",
+            "is_relevant": True,
+            "requires_retrieval": True,
+            "resolved_question": "What is Subrata Haldar's professional experience?",
+            "search_query": "Subrata Haldar experience",
+            "reason": "turn 2"
+        })
+        mock_chat_llm.return_value = "He has 5+ years of software experience [Source 1]."
+        res2 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "What is his experience?", "conversation_id": cid})
+        self.assertEqual(res2.status_code, 200)
+
+        # Turn 3
+        mock_router_llm.return_value = json.dumps({
+            "intent": "follow_up_question",
+            "is_relevant": True,
+            "requires_retrieval": True,
+            "resolved_question": "What AI projects has Subrata Haldar worked on?",
+            "search_query": "Subrata Haldar AI projects LLM agents",
+            "reason": "turn 3"
+        })
+        mock_chat_llm.return_value = "His AI projects include building LangGraph multi-agent systems [Source 1]."
+        res3 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "What about his AI projects?", "conversation_id": cid})
+        self.assertEqual(res3.status_code, 200)
+        self.assertIn("LangGraph", res3.json()["answer"])
+
+        # Verify session has 6 messages (3 user + 3 assistant turns)
+        session = conversation_manager.get(cid)
+        self.assertIsNotNone(session)
+        self.assertEqual(len(session.messages), 6)
+
+    @patch("retrieval_service.retrieve_context")
+    @patch("retrieval_service.generate_chat_response")
+    @patch("retrieval_service.generate_response")
+    def test_topic_switch_to_unrelated_declined(self, mock_router_llm, mock_chat_llm, mock_retrieve):
+        """Test 6: User: 'Who is Subrata Haldar?' -> User: 'What is the capital of France?' politely declined."""
+        # Turn 1
+        mock_router_llm.return_value = json.dumps({
+            "intent": "domain_question",
+            "is_relevant": True,
+            "requires_retrieval": True,
+            "resolved_question": "Who is Subrata Haldar?",
+            "search_query": "Subrata Haldar",
+            "reason": "turn 1"
+        })
+        mock_retrieve.return_value = {
+            "context": "[Source 1]\nFilename: Subrata_Resume.pdf\nPage: 1\nContent: Subrata Haldar.",
+            "sources": [{"filename": "Subrata_Resume.pdf", "page_number": 1, "score": 0.9}],
+            "total_matches": 1
+        }
+        mock_chat_llm.return_value = "Subrata Haldar is an AI engineer [Source 1]."
+        res1 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "Who is Subrata Haldar?"})
+        cid = res1.json()["conversation_id"]
+
+        # Turn 2: Unrelated topic switch
+        mock_router_llm.return_value = json.dumps({
+            "intent": "unrelated_question",
+            "is_relevant": False,
+            "requires_retrieval": False,
+            "resolved_question": "What is the capital of France?",
+            "search_query": None,
+            "reason": "world trivia"
+        })
+        res2 = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "What is the capital of France?", "conversation_id": cid})
+        self.assertEqual(res2.status_code, 200)
+        data2 = res2.json()
+        self.assertNotIn("paris", data2["answer"].lower())
+        self.assertIn("revon", data2["answer"].lower())
+        self.assertEqual(data2["sources"], [])
+        self.assertFalse(data2["is_policy_query"])
+
+    @patch("retrieval_service.generate_response")
+    def test_new_conversation_unresolved_pronoun_not_assumed(self, mock_router_llm):
+        """Test 7: Start new conversation with 'What is his experience?' without context -> declined/unresolved."""
+        mock_router_llm.return_value = json.dumps({
+            "intent": "unrelated_question",
+            "is_relevant": False,
+            "requires_retrieval": False,
+            "resolved_question": "What is his experience? (Unknown referent)",
+            "search_query": None,
+            "reason": "Dangling pronoun with no prior context in new conversation"
+        })
+
+        res = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "What is his experience?"})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        # Must NOT assume Subrata Haldar
+        self.assertNotIn("subrata", data["answer"].lower())
+        self.assertIn("revon", data["answer"].lower())
+        self.assertEqual(data["sources"], [])
+
+    @patch("retrieval_service.retrieve_context")
+    @patch("retrieval_service.generate_chat_response")
+    @patch("retrieval_service.generate_response")
+    def test_separate_conversations_no_leakage(self, mock_router_llm, mock_chat_llm, mock_retrieve):
+        """Test 8: Two separate conversations about different people do not leak memory."""
+        # Session A: Alice
+        mock_router_llm.return_value = json.dumps({
+            "intent": "domain_question",
+            "is_relevant": True,
+            "requires_retrieval": True,
+            "resolved_question": "Who is Alice Smith?",
+            "search_query": "Alice Smith",
+            "reason": "init Alice"
+        })
+        mock_retrieve.return_value = {
+            "context": "[Source 1]\nFilename: Alice_Profile.pdf\nPage: 1\nContent: Alice Smith is a product manager.",
+            "sources": [{"filename": "Alice_Profile.pdf", "page_number": 1, "score": 0.9}],
+            "total_matches": 1
+        }
+        mock_chat_llm.return_value = "Alice Smith is a product manager [Source 1]."
+        res_a = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "Who is Alice Smith?"})
+        cid_a = res_a.json()["conversation_id"]
+
+        # Session B: Bob (completely separate conversation ID)
+        mock_router_llm.return_value = json.dumps({
+            "intent": "domain_question",
+            "is_relevant": True,
+            "requires_retrieval": True,
+            "resolved_question": "Who is Bob Jones?",
+            "search_query": "Bob Jones",
+            "reason": "init Bob"
+        })
+        mock_retrieve.return_value = {
+            "context": "[Source 1]\nFilename: Bob_Profile.pdf\nPage: 1\nContent: Bob Jones is a DevOps engineer.",
+            "sources": [{"filename": "Bob_Profile.pdf", "page_number": 1, "score": 0.9}],
+            "total_matches": 1
+        }
+        mock_chat_llm.return_value = "Bob Jones is a DevOps engineer [Source 1]."
+        res_b = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "Who is Bob Jones?"})
+        cid_b = res_b.json()["conversation_id"]
+
+        self.assertNotEqual(cid_a, cid_b)
+
+        # Check session A history
+        hist_a = conversation_manager.get(cid_a).get_history_for_prompt()
+        self.assertTrue(any("Alice" in m["content"] for m in hist_a))
+        self.assertFalse(any("Bob" in m["content"] for m in hist_a))
+
+        # Check session B history
+        hist_b = conversation_manager.get(cid_b).get_history_for_prompt()
+        self.assertTrue(any("Bob" in m["content"] for m in hist_b))
+        self.assertFalse(any("Alice" in m["content"] for m in hist_b))
+
+
 if __name__ == "__main__":
     unittest.main()

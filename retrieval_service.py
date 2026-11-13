@@ -139,41 +139,48 @@ class IntentAnalysisResult(dict):
         yield self.get("standalone_query") or ""
 
 
-ROUTER_SYSTEM_PROMPT = """You are an intelligent semantic query classifier for RevOn AI Assistant.
-Analyze the user's message and recent conversation history to determine intent, domain relevance to RevOn, and whether knowledge retrieval is required.
+ROUTER_SYSTEM_PROMPT = """You are an intelligent conversational query resolver and semantic classifier for RevOn AI Assistant.
+Analyze the user's latest message and recent conversation history to:
+1. Resolve any pronouns (he, she, his, her, they, their, it), references (this, that, these, those), or contextual follow-up inquiries using the conversation history into a clear, complete, standalone question.
+2. Formulate a rich search query for Pinecone vector retrieval.
+3. Determine domain relevance and intent.
 
 Approved Domain Scope for RevOn:
 1. RevOn company information, website content, products, services, and business offerings.
 2. RevOn company policies, employee benefits, leaves, procedures, conduct, and workplace rules (even without explicitly mentioning "RevOn").
-3. All topics covered by RevOn's uploaded and approved documentation, including:
-   - Technical architectures and networking: DNS resolution, DNS caching, TCP three-way handshake (SYN, SYN-ACK, ACK), and website request lifecycle/journeys.
-   - Web development and APIs: REST APIs, HTTP methods (including differences between PUT and PATCH, GET, POST, DELETE), HTTP status codes (200, 403, 404, 500), and JSON data exchange.
+3. ALL content in RevOn's uploaded and approved documents, including:
+   - Resumes, CVs, employee/team credentials, biographies, and professional profiles (e.g. Subrata Haldar, qualifications, experience, skills, projects).
+   - Technical architectures and networking: DNS resolution, DNS caching, TCP three-way handshake (SYN, SYN-ACK, ACK), website request lifecycle/journeys.
+   - Web development and APIs: REST APIs, HTTP methods (PUT vs PATCH, GET, POST, DELETE), HTTP status codes (200, 403, 404, 500), and JSON data exchange.
    - Any other official guides or documentation provided by RevOn.
-4. Inquiries about the contents, scope, or coverage of uploaded documents (e.g., "Does the document explain OAuth 2.0?", "What documents are uploaded?", "Can you explain the API guide?").
-5. Follow-up questions about a previously discussed topic (e.g., "Why does the browser check DNS cache first?", "How many days are allowed?", "What is the difference between them?").
+4. ANY follow-up question continuing an approved topic, person, or document from previous conversation turns (e.g., "what is his experience?", "which technologies has he worked with?", "what projects has he built?", "tell me more about him", "what about his AI projects?", "why does the browser check DNS cache first?", "how many days are allowed?").
+5. Inquiries about the contents, scope, or coverage of uploaded documents (e.g., "Does the document explain OAuth 2.0?", "What documents are uploaded?", "Can you explain the API guide?").
 
 Out-of-Domain Scope (Strictly Unrelated):
 - General world trivia, geography, politics, sports, entertainment (e.g., "What is the capital of France?", "Who won the FIFA World Cup?", "Who is the president of the USA?").
 - General science, physics, medicine, astronomy, biology (e.g., "Explain quantum physics", "What causes earthquakes?", "How do black holes work?").
 - General programming tutorials, language overviews, or coding algorithms not covered by RevOn's documentation (e.g., "What is Python?", "Write a Python script to calculate Fibonacci", "Write a binary search algorithm in C++", "Solve this math problem").
+- Questions with unresolved pronouns or unknown references when there is NO relevant conversation history (e.g., asking "What is his experience?" in a new conversation where no person was ever discussed).
 - Random non-business chitchat, cooking recipes, personal advice.
 
 Output ONLY a valid JSON object matching this schema:
 {
-  "intent": "domain_question" | "greeting" | "acknowledgement" | "capability_question" | "unrelated_question" | "follow_up_question",
+  "intent": "domain_question" | "follow_up_question" | "greeting" | "acknowledgement" | "capability_question" | "unrelated_question",
   "is_relevant": boolean,
   "requires_retrieval": boolean,
+  "resolved_question": string,
+  "search_query": string or null,
   "standalone_query": string or null,
   "reason": string
 }
 
 Guidelines:
-1. "greeting": "Hello", "Hi", "Good morning", "Hey" -> is_relevant: true, requires_retrieval: false, standalone_query: null
-2. "acknowledgement": "Thank you", "Thanks", "Got it", "Okay", "Goodbye" -> is_relevant: true, requires_retrieval: false, standalone_query: null
-3. "capability_question": "What can you do?", "Who are you?", "How can you help me?" -> is_relevant: true, requires_retrieval: false, standalone_query: null
-4. "unrelated_question": Questions outside RevOn domain (general trivia, sports, world geography, external science, external coding algorithms like Fibonacci, general language queries like "What is Python?") -> is_relevant: false, requires_retrieval: false, standalone_query: null
-5. "domain_question": Any substantive inquiry about RevOn, company policies, or topics in the approved technical/business documents (DNS, TCP, PUT vs PATCH, website journey, APIs, leave policies, document coverage like OAuth 2.0) -> is_relevant: true, requires_retrieval: true, standalone_query: standalone search query for vector retrieval.
-6. "follow_up_question": A follow-up to prior turns in conversation history -> is_relevant: true, requires_retrieval: true, standalone_query: rewritten standalone search query resolving pronouns from history.
+1. "greeting": "Hello", "Hi", "Good morning", "Hey" -> is_relevant: true, requires_retrieval: false, resolved_question: original question, search_query: null, standalone_query: null
+2. "acknowledgement": "Thank you", "Thanks", "Got it", "Okay", "Goodbye" -> is_relevant: true, requires_retrieval: false, resolved_question: original question, search_query: null, standalone_query: null
+3. "capability_question": "What can you do?", "Who are you?", "How can you help me?" -> is_relevant: true, requires_retrieval: false, resolved_question: original question, search_query: null, standalone_query: null
+4. "unrelated_question": Questions outside RevOn domain (general trivia, sports, world geography, external science, external coding algorithms like Fibonacci, or questions with dangling pronouns and NO context) -> is_relevant: false, requires_retrieval: false, resolved_question: original question, search_query: null, standalone_query: null
+5. "domain_question": Any substantive inquiry about RevOn, company policies, or topics in the approved documents (DNS, TCP, PUT vs PATCH, website journey, APIs, leave policies, resumes/profiles, document coverage like OAuth 2.0) -> is_relevant: true, requires_retrieval: true, resolved_question: explicit standalone question, search_query: rich search query for Pinecone, standalone_query: search query.
+6. "follow_up_question": A follow-up continuing a prior topic, person, or document from history (e.g., "what is his experience?" -> resolved_question: "What is Subrata Haldar's professional experience?", search_query: "Subrata Haldar experience resume employment history") -> is_relevant: true, requires_retrieval: true, resolved_question: explicit standalone question resolving all pronouns and references, search_query: rich search query for Pinecone, standalone_query: search query.
 """
 
 
@@ -198,12 +205,12 @@ def extract_cited_sources(answer_text: str, available_sources: list[dict[str, An
 
 def analyze_query_intent(question: str, history: list[dict[str, str]] | None = None) -> IntentAnalysisResult:
     """
-    Use Groq LLM to dynamically classify user intent and domain relevance.
+    Use Groq LLM to dynamically resolve pronouns/context, classify user intent, and determine domain relevance.
     """
     history_str = ""
     if history:
         turns = []
-        for msg in history[-4:]:  # Last 2 turns
+        for msg in history[-8:]:  # Up to 4 previous turns
             role = "User" if msg.get("role") == "user" else "Assistant"
             turns.append(f"{role}: {msg.get('content', '')}")
         history_str = "\n".join(turns)
@@ -221,20 +228,23 @@ def analyze_query_intent(question: str, history: list[dict[str, str]] | None = N
             intent = data.get("intent", "domain_question")
             is_relevant = bool(data.get("is_relevant", True))
             requires_retrieval = bool(data.get("requires_retrieval", True))
-            standalone_query = data.get("standalone_query") or question
+            resolved_question = data.get("resolved_question") or question
+            search_query = data.get("search_query") or data.get("standalone_query") or resolved_question
             reason = data.get("reason", "")
 
             # Guard against edge-case misclassifications
             if intent == "unrelated_question":
                 is_relevant = False
                 requires_retrieval = False
-                standalone_query = None
+                search_query = None
 
             return IntentAnalysisResult({
                 "intent": intent,
                 "is_relevant": is_relevant,
                 "requires_retrieval": requires_retrieval,
-                "standalone_query": standalone_query.strip() if standalone_query else None,
+                "resolved_question": resolved_question.strip() if resolved_question else question.strip(),
+                "search_query": search_query.strip() if search_query else None,
+                "standalone_query": search_query.strip() if search_query else None,
                 "reason": reason
             })
     except Exception as e:
@@ -245,6 +255,8 @@ def analyze_query_intent(question: str, history: list[dict[str, str]] | None = N
         "intent": "domain_question",
         "is_relevant": True,
         "requires_retrieval": True,
+        "resolved_question": question.strip(),
+        "search_query": question.strip(),
         "standalone_query": question.strip(),
         "reason": "Fallback default"
     })
@@ -323,25 +335,27 @@ def answer_conversational_question(
     active_cid, session = conversation_manager.get_or_create(conversation_id)
 
     # 2. Build history for prompt
-    history_messages = session.get_history_for_prompt(max_messages=8)
+    history_messages = session.get_history_for_prompt(max_messages=12)
     if not history_messages and client_history:
-        for item in client_history[-8:]:
+        for item in client_history[-12:]:
             role = item.get("role")
             content = item.get("content")
             if role in ("user", "assistant") and content:
                 history_messages.append({"role": role, "content": str(content)})
 
-    # 3. Dynamic intent analysis (Semantic Router)
+    # 3. Dynamic contextual intent analysis & query resolution
     analysis = analyze_query_intent(clean_question, history_messages)
     if isinstance(analysis, tuple):
         needs_retrieval, search_query = analysis
         intent = "domain_question" if needs_retrieval else "greeting"
         is_relevant = True
+        resolved_question = clean_question
     else:
         intent = analysis.get("intent", "domain_question")
         is_relevant = analysis.get("is_relevant", True)
         needs_retrieval = analysis.get("requires_retrieval", True)
-        search_query = analysis.get("standalone_query") or clean_question
+        resolved_question = analysis.get("resolved_question") or clean_question
+        search_query = analysis.get("search_query") or analysis.get("standalone_query") or resolved_question
 
     # 4. Strict Domain Restriction Enforcement:
     # If the user asks an unrelated question outside RevOn domain, politely refuse immediately.
@@ -385,7 +399,7 @@ def answer_conversational_question(
             "intent": intent,
         }
 
-    # 6. Domain question: Retrieve context from Pinecone
+    # 6. Domain question: Retrieve context from Pinecone using search_query
     retrieved_context = ""
     sources = []
     total_matches = 0
@@ -403,12 +417,18 @@ def answer_conversational_question(
     ]
     messages.extend(history_messages)
 
+    display_question_context = (
+        f"{clean_question} (Context: {resolved_question})"
+        if resolved_question and resolved_question.lower() != clean_question.lower()
+        else clean_question
+    )
+
     if retrieved_context.strip():
         user_message_content = f"""Approved Knowledge Base & Document Context:
 {retrieved_context}
 
 User Question:
-{clean_question}
+{display_question_context}
 
 Instructions:
 1. If the context contains direct evidence to answer the question, answer accurately and cite the exact source using [Source X] format.
@@ -418,7 +438,7 @@ Instructions:
     else:
         # Relevant to RevOn, but no published documents found
         user_message_content = f"""User Question:
-{clean_question}
+{display_question_context}
 
 [System note: No relevant information was found in the approved RevOn knowledge sources or uploaded documents. State clearly and politely that this information is not available in RevOn's current documentation and advise the user to contact the appropriate RevOn department (such as HR or support). Do NOT invent any details or fabricate citations.]"""
 
@@ -472,25 +492,27 @@ def stream_conversational_question(
         active_cid, session = conversation_manager.get_or_create(conversation_id)
 
         # 2. Build history
-        history_messages = session.get_history_for_prompt(max_messages=8)
+        history_messages = session.get_history_for_prompt(max_messages=12)
         if not history_messages and client_history:
-            for item in client_history[-8:]:
+            for item in client_history[-12:]:
                 role = item.get("role")
                 content = item.get("content")
                 if role in ("user", "assistant") and content:
                     history_messages.append({"role": role, "content": str(content)})
 
-        # 3. Dynamic intent analysis
+        # 3. Dynamic contextual intent analysis & query resolution
         analysis = analyze_query_intent(clean_question, history_messages)
         if isinstance(analysis, tuple):
             needs_retrieval, search_query = analysis
             intent = "domain_question" if needs_retrieval else "greeting"
             is_relevant = True
+            resolved_question = clean_question
         else:
             intent = analysis.get("intent", "domain_question")
             is_relevant = analysis.get("is_relevant", True)
             needs_retrieval = analysis.get("requires_retrieval", True)
-            search_query = analysis.get("standalone_query") or clean_question
+            resolved_question = analysis.get("resolved_question") or clean_question
+            search_query = analysis.get("search_query") or analysis.get("standalone_query") or resolved_question
 
         # Emit start event
         yield f"event: start\ndata: {json.dumps({'conversation_id': active_cid, 'intent': intent})}\n\n"
@@ -535,7 +557,7 @@ def stream_conversational_question(
             yield f"event: complete\ndata: {json.dumps({'conversation_id': active_cid, 'status': 'success', 'is_policy_query': False, 'answer': final_text})}\n\n"
             return
 
-        # 6. Domain questions: Retrieve context from Pinecone
+        # 6. Domain question: Retrieve context from Pinecone using search_query
         retrieved_context = ""
         sources = []
         try:
@@ -557,12 +579,18 @@ def stream_conversational_question(
         ]
         messages.extend(history_messages)
 
+        display_question_context = (
+            f"{clean_question} (Context: {resolved_question})"
+            if resolved_question and resolved_question.lower() != clean_question.lower()
+            else clean_question
+        )
+
         if retrieved_context.strip():
             user_message_content = f"""Approved Knowledge Base & Document Context:
 {retrieved_context}
 
 User Question:
-{clean_question}
+{display_question_context}
 
 Instructions:
 1. If the context contains direct evidence to answer the question, answer accurately and cite the exact source using [Source X] format.
@@ -571,7 +599,7 @@ Instructions:
 4. If the question is completely unrelated to RevOn or the documents, politely decline."""
         else:
             user_message_content = f"""User Question:
-{clean_question}
+{display_question_context}
 
 [System note: No relevant information was found in the approved RevOn knowledge sources or uploaded documents. State clearly and politely that this information is not available in RevOn's current documentation and advise the user to contact the appropriate RevOn department (such as HR or support). Do NOT invent any details or fabricate citations.]"""
 
