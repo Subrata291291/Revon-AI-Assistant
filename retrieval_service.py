@@ -251,7 +251,35 @@ def extract_cited_sources(answer_text: str, available_sources: list[dict[str, An
 def analyze_query_intent(question: str, history: list[dict[str, str]] | None = None) -> IntentAnalysisResult:
     """
     Use Groq LLM to dynamically resolve pronouns/context, classify user intent, and determine domain relevance.
+    Includes fast-path checks for common greetings and pleasantries to preserve LLM token quotas.
     """
+    clean_q = (question or "").strip()
+    norm_q = clean_q.lower().rstrip("!?., ")
+
+    # 1. Fast-path greeting detection
+    if norm_q in ("hi", "hello", "hey", "good morning", "good afternoon", "good evening", "greetings", "hi there", "hello there"):
+        return IntentAnalysisResult({
+            "intent": "greeting",
+            "is_relevant": True,
+            "requires_retrieval": False,
+            "resolved_question": clean_q,
+            "search_query": None,
+            "standalone_query": None,
+            "reason": "Fast-path greeting detection"
+        })
+
+    # 2. Fast-path acknowledgement detection
+    if norm_q in ("thank you", "thanks", "thanks a lot", "thank you so much", "ok", "okay", "got it", "goodbye", "bye"):
+        return IntentAnalysisResult({
+            "intent": "acknowledgement",
+            "is_relevant": True,
+            "requires_retrieval": False,
+            "resolved_question": clean_q,
+            "search_query": None,
+            "standalone_query": None,
+            "reason": "Fast-path acknowledgement detection"
+        })
+
     history_str = ""
     if history:
         turns = []
@@ -295,14 +323,15 @@ def analyze_query_intent(question: str, history: list[dict[str, str]] | None = N
     except Exception as e:
         logger.warning("Query intent analysis failed (%s); defaulting to safe domain retrieval", e)
 
-    # Safe fallback
+    # Safe fallback: if very short pleasantry, don't trigger vector retrieval
+    is_greeting_like = norm_q in ("hi", "hello", "hey", "thanks", "ok")
     return IntentAnalysisResult({
-        "intent": "domain_question",
+        "intent": "greeting" if is_greeting_like else "domain_question",
         "is_relevant": True,
-        "requires_retrieval": True,
+        "requires_retrieval": not is_greeting_like,
         "resolved_question": question.strip(),
-        "search_query": question.strip(),
-        "standalone_query": question.strip(),
+        "search_query": None if is_greeting_like else question.strip(),
+        "standalone_query": None if is_greeting_like else question.strip(),
         "reason": "Fallback default"
     })
 

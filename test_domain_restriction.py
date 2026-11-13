@@ -1072,8 +1072,9 @@ class TestConversationalMemory(unittest.TestCase):
         self.assertEqual(data2["sources"], [])
         self.assertFalse(data2["is_policy_query"])
 
+    @patch("retrieval_service.generate_chat_response")
     @patch("retrieval_service.generate_response")
-    def test_new_conversation_unresolved_pronoun_not_assumed(self, mock_router_llm):
+    def test_new_conversation_unresolved_pronoun_not_assumed(self, mock_router_llm, mock_chat_llm):
         """Test 7: Start new conversation with 'What is his experience?' without context -> declined/unresolved."""
         mock_router_llm.return_value = json.dumps({
             "intent": "unrelated_question",
@@ -1083,6 +1084,7 @@ class TestConversationalMemory(unittest.TestCase):
             "search_query": None,
             "reason": "Dangling pronoun with no prior context in new conversation"
         })
+        mock_chat_llm.return_value = "I am RevOn's AI assistant. I don't know who you are referring to. Please specify a name or ask about RevOn."
 
         res = self.client.post("/api/v1/chat", headers=HEADERS, json={"question": "What is his experience?"})
         self.assertEqual(res.status_code, 200)
