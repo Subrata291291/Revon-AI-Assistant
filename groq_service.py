@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Generator
 from dotenv import load_dotenv
 from groq import Groq
 
@@ -50,6 +51,33 @@ def generate_chat_response(
         raise RuntimeError("Groq returned an empty response")
 
     return response.strip()
+
+
+def generate_chat_stream(
+    messages: list[dict],
+    temperature: float = 0.2,
+    max_tokens: int = 1500,
+) -> Generator[str, None, None]:
+    """
+    Generate an LLM streaming response yielding text tokens progressively.
+
+    Each message should follow the schema: {"role": "system"|"user"|"assistant", "content": str}.
+    """
+    if not messages:
+        raise ValueError("Messages list cannot be empty")
+
+    stream = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=messages,
+        temperature=temperature,
+        max_completion_tokens=max_tokens,
+        reasoning_effort="medium",
+        stream=True,
+    )
+
+    for chunk in stream:
+        if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
 
 
 def generate_response(

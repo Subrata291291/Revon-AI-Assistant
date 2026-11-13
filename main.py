@@ -17,6 +17,7 @@ from fastapi import (
     Query,
     Request,
 )
+from fastapi.responses import StreamingResponse
 from pathlib import Path
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -905,3 +906,69 @@ def reset_public_policy_chat(
         "conversation_id": payload.conversation_id,
         "cleared": cleared,
     }
+
+
+@app.post("/api/v1/chat/stream")
+def public_policy_chat_stream(
+    payload: PublicChatRequest,
+    request: Request,
+    _: None = Depends(verify_chat_token),
+    x_revon_visitor_ip: str | None = Header(
+        default=None,
+        alias="X-RevOn-Visitor-IP",
+    ),
+):
+    """
+    Genuine real-time SSE streaming chat endpoint.
+
+    Returns a text/event-stream response with structured events:
+    start -> (sources?) -> token... -> complete
+    or:
+    start -> token (refusal)... -> complete
+    or:
+    error
+
+    The browser talks to WordPress; WordPress calls this endpoint server-side.
+    Authentication, rate-limiting, and security mirroring the non-streaming endpoint.
+    """
+    question = payload.question.strip()
+    if not question:
+        raise HTTPException(status_code=422, detail="Question cannot be empty.")
+
+    visitor_key = (x_revon_visitor_ip or "").strip()
+    if not visitor_key and request.client:
+        visitor_key = request.client.host
+    if not visitor_key:
+        visitor_key = "unknown"
+
+    enforce_chat_rate_limit(visitor_key)
+
+    from retrieval_service import stream_conversational_question
+
+    client_history = (
+        [h.model_dump() for h in payload.history]
+        if payload.history else None
+    )
+
+    def event_generator():
+        try:
+            for event in stream_conversational_question(
+                question=question,
+                conversation_id=payload.conversation_id,
+                client_history=client_history,
+                top_k=5,
+            ):
+                yield event
+        except Exception:
+            import json
+            logger.exception("SSE stream failed.")
+            yield f"event: error\ndata: {json.dumps({'detail': 'Stream failed.'})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
