@@ -34,7 +34,7 @@ logger = logging.getLogger("revon-policy-chatbot")
 app = FastAPI(
     title="RevOn Policy AI Chatbot",
     description="AI-powered policy chatbot for RevOn",
-    version="1.4.1",
+    version="1.4.2",
 )
 
 
@@ -449,6 +449,110 @@ def verify_deleted_document_absence(
             },
         )
 
+
+
+@app.post("/api/v1/documents/deactivate")
+def deactivate_document(
+    document_id: str = Form(...),
+    logical_document_id: str = Form(...),
+    version: int = Form(...),
+    expected_vectors: int = Form(...),
+    request_id: str = Form(...),
+    upload_request_id: str = Form(...),
+    _: None = Depends(verify_admin_token),
+):
+    """Deactivate one owned document and verify every Pinecone vector.
+
+    This operation does not delete vectors or files. WordPress owns the
+    durable operation ledger and updates its registry only after this
+    endpoint returns a fully verified inactive state.
+    """
+    document_id = validate_identifier(document_id, "document_id")
+    logical_document_id = validate_identifier(
+        logical_document_id, "logical_document_id"
+    )
+    request_id = validate_identifier(request_id, "request_id")
+    upload_request_id = validate_identifier(upload_request_id, "upload_request_id")
+
+    if version < 1 or expected_vectors < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="version and expected_vectors must be positive.",
+        )
+
+    try:
+        ownership = verify_document_ownership(
+            document_id=document_id,
+            logical_document_id=logical_document_id,
+            version=version,
+            request_id=upload_request_id,
+            expected_vectors=expected_vectors,
+        )
+        # Idempotent retry: a prior request may have completed in Pinecone
+        # while its HTTP response was lost. Accept only a fully verified
+        # inactive state for the same owned document.
+        try:
+            inactive_state = verify_document_active_state(
+                document_id=document_id,
+                expected_active=False,
+                expected_vectors=expected_vectors,
+            )
+            already_inactive = True
+            update_result = {"total_updated": 0}
+        except ValueError:
+            # Do not mutate a mixed/unknown state. Only a fully active
+            # document may transition to inactive.
+            verify_document_active_state(
+                document_id=document_id,
+                expected_active=True,
+                expected_vectors=expected_vectors,
+            )
+            update_result = set_document_active(
+                document_id=document_id,
+                is_active=False,
+                rollback_to=True,
+            )
+            inactive_state = verify_document_active_state(
+                document_id=document_id,
+                expected_active=False,
+                expected_vectors=expected_vectors,
+            )
+            already_inactive = False
+
+        return {
+            "status": "success",
+            "document_id": document_id,
+            "logical_document_id": logical_document_id,
+            "version": version,
+            "request_id": request_id,
+            "upload_request_id": upload_request_id,
+            "is_active": False,
+            "already_inactive": already_inactive,
+            "total_updated": update_result["total_updated"],
+            "verified": True,
+            "verification": {
+                "ownership": ownership,
+                "inactive_state": inactive_state,
+            },
+            "message": "Document deactivated and verified successfully.",
+        }
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except Exception as error:
+        logger.exception(
+            "Document deactivation failed. request_id=%s document_id=%s",
+            request_id,
+            document_id,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Document deactivation could not be verified.",
+                "request_id": request_id,
+                "document_id": document_id,
+                "reconciliation_required": True,
+            },
+        ) from error
 
 
 @app.post("/api/v1/documents/activate")
