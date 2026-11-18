@@ -812,8 +812,9 @@ def activate_document_version(
 
         raise HTTPException(status_code=500, detail=detail) from activation_error
 
-@trace_chat
+
 @app.post("/api/v1/chat")
+@trace_chat
 def public_policy_chat(
     payload: PublicChatRequest,
     request: Request,
@@ -893,8 +894,9 @@ def public_policy_chat(
             detail="The policy assistant is temporarily unavailable. Please try again.",
         )
 
-@trace_chat
+
 @app.post("/api/v1/chat/reset")
+@trace_chat
 def reset_public_policy_chat(
     payload: ChatResetRequest,
     _: None = Depends(verify_chat_token),
@@ -909,8 +911,8 @@ def reset_public_policy_chat(
         "cleared": cleared,
     }
 
-@trace_chat
 @app.post("/api/v1/chat/stream")
+@trace_chat
 def public_policy_chat_stream(
     payload: PublicChatRequest,
     request: Request,
