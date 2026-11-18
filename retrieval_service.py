@@ -8,6 +8,8 @@ from vector_store import query_vectors
 from groq_service import generate_chat_response, generate_chat_stream, generate_response
 from conversation_service import conversation_manager
 
+from langsmith_config import trace_chat, trace_retrieval
+
 logger = logging.getLogger("revon-policy-chatbot.retrieval")
 
 DOMAIN_REFUSAL_MESSAGE = (
@@ -101,7 +103,7 @@ def clean_response_presentation(text: str) -> str:
         cleaned_lines.append(line)
     return "\n".join(cleaned_lines)
 
-
+@trace_retrieval
 def retrieve_context(question: str, top_k: int = 5):
     if not question or not question.strip():
         raise ValueError("Question cannot be empty.")
@@ -247,7 +249,7 @@ def extract_cited_sources(answer_text: str, available_sources: list[dict[str, An
             cited_sources.append(source_item)
     return cited_sources
 
-
+@trace_chat
 def analyze_query_intent(question: str, history: list[dict[str, str]] | None = None) -> IntentAnalysisResult:
     """
     Use Groq LLM to dynamically resolve pronouns/context, classify user intent, and determine domain relevance.
@@ -391,7 +393,7 @@ Include source references in your answer.
         "total_matches": retrieved["total_matches"]
     }
 
-
+@trace_chat
 def answer_conversational_question(
     question: str,
     conversation_id: str | None = None,

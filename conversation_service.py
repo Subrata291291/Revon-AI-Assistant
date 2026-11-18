@@ -9,7 +9,7 @@ import time
 import uuid
 import threading
 from typing import Any
-
+from langsmith_config import trace_chat
 
 DEFAULT_SESSION_TTL_SECONDS = 7200  # 2 hours
 DEFAULT_MAX_TURNS_PER_SESSION = 20  # Last 20 messages (10 user + 10 assistant)
@@ -44,7 +44,8 @@ class ConversationSession:
         # Keep messages bounded
         if len(self.messages) > DEFAULT_MAX_TURNS_PER_SESSION:
             self.messages = self.messages[-DEFAULT_MAX_TURNS_PER_SESSION:]
-
+            
+    @trace_chat
     def get_history_for_prompt(self, max_messages: int = 10) -> list[dict[str, str]]:
         """Return clean role/content pairs formatted for LLM message history."""
         trimmed = self.messages[-max_messages:]
@@ -97,7 +98,8 @@ class ConversationManager:
                 return None
             session.touch()
             return session
-
+        
+    @trace_chat
     def record_turn(
         self,
         conversation_id: str,

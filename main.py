@@ -22,6 +22,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
+from langsmith_config import trace_chat
+
 _dotenv_path = Path(__file__).resolve().parent / ".env"
 if _dotenv_path.is_file():
     load_dotenv(dotenv_path=_dotenv_path)
@@ -810,7 +812,7 @@ def activate_document_version(
 
         raise HTTPException(status_code=500, detail=detail) from activation_error
 
-
+@trace_chat
 @app.post("/api/v1/chat")
 def public_policy_chat(
     payload: PublicChatRequest,
@@ -891,7 +893,7 @@ def public_policy_chat(
             detail="The policy assistant is temporarily unavailable. Please try again.",
         )
 
-
+@trace_chat
 @app.post("/api/v1/chat/reset")
 def reset_public_policy_chat(
     payload: ChatResetRequest,
@@ -907,7 +909,7 @@ def reset_public_policy_chat(
         "cleared": cleared,
     }
 
-
+@trace_chat
 @app.post("/api/v1/chat/stream")
 def public_policy_chat_stream(
     payload: PublicChatRequest,

@@ -27,6 +27,8 @@ from typing import Generator, Any
 import httpx
 from dotenv import load_dotenv
 
+from langsmith_config import trace_llm
+
 # Ensure .env is loaded reliably
 _dotenv_path = Path(__file__).resolve().parent / ".env"
 if _dotenv_path.is_file():
@@ -110,6 +112,7 @@ class BaseLLMProvider(ABC):
         """Check whether the provider has required credentials configured."""
         return bool(self.api_key and str(self.api_key).strip())
 
+    @trace_llm
     @abstractmethod
     def generate(
         self,
@@ -903,6 +906,7 @@ class LLMProviderRouter:
         )
         raise AllProvidersFailedError(failures)
 
+    @trace_llm
     def generate_chat_stream(
         self,
         messages: list[dict[str, str]],

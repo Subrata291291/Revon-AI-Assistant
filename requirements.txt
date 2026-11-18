@@ -9,3 +9,4 @@ google-genai==3.2.0 # for Google Generative AI integration
 python-dotenv==1.2.4 # for loading environment variables from .env files
 groq==1.7.0 # for Groq API integration
 httpx>=0.28.0 # for resilient OpenRouter and OpenAI REST API requests
+langsmith # for LangSmith integration
