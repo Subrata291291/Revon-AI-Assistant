@@ -28,6 +28,13 @@ import httpx
 from dotenv import load_dotenv
 
 from langsmith_config import trace_llm
+from tracing_utils import (
+    SYSTEM_INSTRUCTION_VERSION,
+    classify_trace_exception,
+    redact_obj,
+    safe_excerpt,
+    safe_set_current_run,
+)
 
 # Ensure .env is loaded reliably
 _dotenv_path = Path(__file__).resolve().parent / ".env"
@@ -918,95 +925,158 @@ class LLMProviderRouter:
         - Before the first content chunk is yielded, a provider failure automatically triggers the next provider.
         - Once output has started emitting to the client, failures raise MidStreamProviderError without restarting.
         """
+        overall_start = time.perf_counter()
+        final_provider = None
+        final_model = None
+        emitted_chunks: list[str] = []
+        stream_error: Exception | None = None
+        try:
+            safe_set_current_run(
+                name="llm_generation",
+                inputs=redact_obj(
+                    {
+                        "messages": messages,
+                        "temperature": temperature,
+                        "max_tokens": max_tokens,
+                        "streaming": True,
+                        "system_instruction_version": SYSTEM_INSTRUCTION_VERSION,
+                    }
+                ),
+                metadata={"operation": "llm_generation", "streaming": True, "system_instruction_version": SYSTEM_INSTRUCTION_VERSION},
+            )
+        except Exception:
+            pass
+
         providers = self.get_configured_providers()
         if not providers:
-            raise AllProvidersFailedError([{
+            err = AllProvidersFailedError([{
                 "provider": "none",
                 "error": "No LLM providers are configured with valid API keys."
             }])
+            try:
+                safe_set_current_run(outputs={"error": classify_trace_exception(err), "streaming": True}, metadata={"operation": "llm_generation", "error": True})
+            except Exception:
+                pass
+            raise err
 
         failures: list[dict[str, Any]] = []
 
-        for attempt_idx, provider in enumerate(providers, start=1):
-            logger.info(
-                "[LLM Router] Attempting streaming with provider: %s (model: %s, attempt: %d/%d)",
-                provider.name,
-                provider.model,
-                attempt_idx,
-                len(providers),
-            )
-            start_time = time.time()
-
-            try:
-                stream_gen = provider.stream(
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
+        try:
+            for attempt_idx, provider in enumerate(providers, start=1):
+                logger.info(
+                    "[LLM Router] Attempting streaming with provider: %s (model: %s, attempt: %d/%d)",
+                    provider.name,
+                    provider.model,
+                    attempt_idx,
+                    len(providers),
                 )
+                start_time = time.time()
 
-                # Peek first token before yielding to ensure connection succeeds
                 try:
-                    first_chunk = next(stream_gen)
-                except StopIteration:
-                    # Provider produced zero tokens, treat as failure
-                    raise LLMProviderError(
-                        provider=provider.name,
-                        message="Provider stream closed without emitting any tokens",
-                        status_code=502,
-                        is_transient=True,
+                    stream_gen = provider.stream(
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
                     )
 
-                # First token arrived! Yield it and stream the rest
-                yield first_chunk
+                    # Peek first token before yielding to ensure connection succeeds
+                    try:
+                        first_chunk = next(stream_gen)
+                    except StopIteration:
+                        # Provider produced zero tokens, treat as failure
+                        raise LLMProviderError(
+                            provider=provider.name,
+                            message="Provider stream closed without emitting any tokens",
+                            status_code=502,
+                            is_transient=True,
+                        )
 
-                # Stream remainder. If failure happens here, it is mid-stream.
-                try:
-                    for chunk in stream_gen:
-                        yield chunk
+                    # First token arrived! Yield it and stream the rest
+                    final_provider = provider.name
+                    final_model = provider.model
+                    emitted_chunks.append(first_chunk)
+                    yield first_chunk
+
+                    # Stream remainder. If failure happens here, it is mid-stream.
+                    try:
+                        for chunk in stream_gen:
+                            emitted_chunks.append(chunk)
+                            yield chunk
+                        duration = time.time() - start_time
+                        logger.info(
+                            "[LLM Router] %s streaming completed in %.2fs. Final provider: %s",
+                            provider.name.capitalize(),
+                            duration,
+                            provider.name,
+                        )
+                        return
+                    except Exception as mid_err:
+                        logger.error(
+                            "[LLM Router] %s failed mid-stream: %s",
+                            provider.name.capitalize(),
+                            mid_err,
+                        )
+                        raise MidStreamProviderError(
+                            provider=provider.name,
+                            message=str(mid_err),
+                        ) from mid_err
+
+                except MidStreamProviderError:
+                    # Do NOT attempt another provider mid-stream to prevent corrupted/duplicate content
+                    raise
+                except Exception as pre_token_err:
                     duration = time.time() - start_time
-                    logger.info(
-                        "[LLM Router] %s streaming completed in %.2fs. Final provider: %s",
+                    status = getattr(pre_token_err, "status_code", None)
+                    msg = str(pre_token_err)
+                    logger.warning(
+                        "[LLM Router] %s failed before first token: status=%s, error=%s",
                         provider.name.capitalize(),
-                        duration,
-                        provider.name,
+                        status,
+                        msg,
                     )
-                    return
-                except Exception as mid_err:
-                    logger.error(
-                        "[LLM Router] %s failed mid-stream: %s",
-                        provider.name.capitalize(),
-                        mid_err,
-                    )
-                    raise MidStreamProviderError(
-                        provider=provider.name,
-                        message=str(mid_err),
-                    ) from mid_err
+                    failures.append({
+                        "provider": provider.name,
+                        "model": provider.model,
+                        "status_code": status,
+                        "error": msg,
+                        "duration_seconds": duration,
+                    })
+                    if attempt_idx < len(providers):
+                        next_p = providers[attempt_idx]
+                        logger.info("[LLM Router] Switching provider: %s", next_p.name)
 
-            except MidStreamProviderError:
-                # Do NOT attempt another provider mid-stream to prevent corrupted/duplicate content
-                raise
-            except Exception as pre_token_err:
-                duration = time.time() - start_time
-                status = getattr(pre_token_err, "status_code", None)
-                msg = str(pre_token_err)
-                logger.warning(
-                    "[LLM Router] %s failed before first token: status=%s, error=%s",
-                    provider.name.capitalize(),
-                    status,
-                    msg,
+            raise AllProvidersFailedError(failures)
+        except Exception as e:
+            stream_error = e
+            raise
+        finally:
+            try:
+                latency_ms = round((time.perf_counter() - overall_start) * 1000.0, 2)
+                final_answer = "".join(emitted_chunks).strip()
+                out: dict[str, Any] = {
+                    "provider": final_provider,
+                    "model": final_model,
+                    "latency_ms": latency_ms,
+                    "generation_latency_ms": latency_ms,
+                    "streaming": True,
+                    "system_instruction_version": SYSTEM_INSTRUCTION_VERSION,
+                    "final_answer_excerpt": safe_excerpt(final_answer, 500),
+                    "final_answer_length": len(final_answer),
+                }
+                if stream_error is not None:
+                    out["error"] = classify_trace_exception(stream_error)
+                safe_set_current_run(
+                    outputs=redact_obj(out),
+                    metadata={
+                        "operation": "llm_generation",
+                        "provider": final_provider,
+                        "model": final_model,
+                        "system_instruction_version": SYSTEM_INSTRUCTION_VERSION,
+                        "error": stream_error is not None,
+                    },
                 )
-                failures.append({
-                    "provider": provider.name,
-                    "model": provider.model,
-                    "status_code": status,
-                    "error": msg,
-                    "duration_seconds": duration,
-                })
-                if attempt_idx < len(providers):
-                    next_p = providers[attempt_idx]
-                    logger.info("[LLM Router] Switching provider: %s", next_p.name)
-
-        raise AllProvidersFailedError(failures)
+            except Exception:
+                pass
 
     def generate_response(
         self,

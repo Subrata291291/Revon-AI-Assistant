@@ -255,10 +255,12 @@ def _is_abstention_answer(answer: str, acceptable: list[str] | None = None) -> b
         c = _normalize_text(cand)
         if c == a or c in a or a in c:
             return True
-    # generic grounded abstention cues
+    # generic grounded abstention cues (support legacy and PDF-grounded phrasings)
     cues = [
         "uploaded documents do not contain",
+        "uploaded pdfs do not contain",
         "documents do not contain the requested information",
+        "not contain sufficient information",
         "not contain enough information",
         "cannot find relevant information",
         "no relevant information",

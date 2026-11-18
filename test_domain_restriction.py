@@ -776,9 +776,17 @@ class TestIntentAnalysisResult(unittest.TestCase):
         self.assertFalse(result["is_relevant"])
 
     def test_document_not_found_message_present(self):
-        """DOCUMENT_NOT_FOUND_MESSAGE must clearly indicate missing document information."""
-        self.assertIn("uploaded documents", DOCUMENT_NOT_FOUND_MESSAGE.lower())
-        self.assertIn("do not contain", DOCUMENT_NOT_FOUND_MESSAGE.lower())
+        """DOCUMENT_NOT_FOUND_MESSAGE must clearly indicate missing/insufficient document evidence."""
+        msg = DOCUMENT_NOT_FOUND_MESSAGE.lower()
+        self.assertIn("uploaded", msg)
+        self.assertTrue(
+            ("pdf" in msg) or ("document" in msg),
+            "message should refer to uploaded documents/PDFs",
+        )
+        self.assertTrue(
+            ("do not contain" in msg) or ("sufficient information" in msg),
+            "message should indicate missing or insufficient evidence",
+        )
 
 
 # ===========================================================================

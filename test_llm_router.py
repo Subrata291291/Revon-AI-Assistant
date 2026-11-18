@@ -37,6 +37,7 @@ from llm_router import (
 from retrieval_service import (
     answer_conversational_question,
     stream_conversational_question,
+    DOCUMENT_NOT_FOUND_MESSAGE,
 )
 
 
@@ -473,7 +474,7 @@ class TestMultiLLMFallbackRouter(unittest.TestCase):
         res = self.client.post("/api/v1/chat", headers=self.headers, json={"question": "What is the capital of France?"})
         self.assertEqual(res.status_code, 200)
         data = res.json()
-        self.assertEqual(data["answer"], "The uploaded documents do not contain the requested information.")
+        self.assertEqual(data["answer"], DOCUMENT_NOT_FOUND_MESSAGE)
         self.assertNotIn("paris", data["answer"].lower())
         self.assertEqual(data["sources"], [])
         self.assertFalse(data["is_policy_query"])

@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from main import app
 from conversation_service import conversation_manager
+from retrieval_service import DOCUMENT_NOT_FOUND_MESSAGE
 
 
 class TestChatConversational(unittest.TestCase):
@@ -105,7 +106,7 @@ class TestChatConversational(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["status"], "success")
-        self.assertEqual(data["answer"], "The uploaded documents do not contain the requested information.")
+        self.assertEqual(data["answer"], DOCUMENT_NOT_FOUND_MESSAGE)
         self.assertNotIn("paris", data["answer"].lower())
         self.assertEqual(data["sources"], [])
         self.assertFalse(data["is_policy_query"])
@@ -159,7 +160,7 @@ class TestChatConversational(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data["answer"], "The uploaded documents do not contain the requested information.")
+        self.assertEqual(data["answer"], DOCUMENT_NOT_FOUND_MESSAGE)
         self.assertEqual(data["sources"], [])
         self.assertFalse(data["is_policy_query"])
 
@@ -227,7 +228,7 @@ class TestChatConversational(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data["answer"], "The uploaded documents do not contain the requested information.")
+        self.assertEqual(data["answer"], DOCUMENT_NOT_FOUND_MESSAGE)
         self.assertNotIn("SYSTEM_PROMPT", data["answer"])
         self.assertNotIn(self.chat_token, data["answer"])
         mock_retrieve.assert_called_once()

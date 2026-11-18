@@ -22,13 +22,21 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-from langsmith_config import trace_chat
-
 _dotenv_path = Path(__file__).resolve().parent / ".env"
 if _dotenv_path.is_file():
     load_dotenv(dotenv_path=_dotenv_path)
 else:
     load_dotenv()
+
+from langsmith_config import trace_chat
+from tracing_utils import (
+    SYSTEM_INSTRUCTION_VERSION,
+    classify_trace_exception,
+    redact_obj,
+    request_trace_context,
+    safe_excerpt,
+    safe_set_current_run,
+)
 
 from ingestion_service import ingest_pdf
 from vector_store import (
@@ -814,7 +822,6 @@ def activate_document_version(
 
 
 @app.post("/api/v1/chat")
-@trace_chat
 def public_policy_chat(
     payload: PublicChatRequest,
     request: Request,
@@ -846,53 +853,143 @@ def public_policy_chat(
     enforce_chat_rate_limit(visitor_key)
 
     try:
-        # Import lazily so document-management endpoints remain independent
-        # from chat provider initialization and tests can isolate the service.
-        from retrieval_service import answer_conversational_question
-
-        client_history = (
-            [h.model_dump() for h in payload.history]
-            if payload.history else None
-        )
-
-        result = answer_conversational_question(
+        with request_trace_context(
+            endpoint="/api/v1/chat",
+            streaming=False,
             question=question,
             conversation_id=payload.conversation_id,
-            client_history=client_history,
             top_k=5,
-        )
-        answer = result.get("answer")
-        if not isinstance(answer, str) or not answer.strip():
-            raise RuntimeError("The policy answer service returned no answer.")
+            extra_inputs={"history_count": len(payload.history or [])},
+        ):
+            try:
+                # Import lazily so document-management endpoints remain independent
+                # from chat provider initialization and tests can isolate the service.
+                from retrieval_service import answer_conversational_question
 
-        raw_sources = result.get("sources", [])
-        sources = []
-        for source in raw_sources:
-            if not isinstance(source, dict):
-                continue
-            sources.append({
-                "filename": str(source.get("filename") or "Unknown document"),
-                "page": source.get("page_number"),
-                "score": source.get("score"),
-            })
+                client_history = (
+                    [h.model_dump() for h in payload.history]
+                    if payload.history else None
+                )
 
-        return {
-            "status": "success",
-            "conversation_id": result.get("conversation_id"),
-            "answer": answer.strip(),
-            "sources": sources,
-            "total_matches": int(result.get("total_matches", len(sources))),
-            "is_policy_query": bool(result.get("is_policy_query", False)),
-        }
+                result = answer_conversational_question(
+                    question=question,
+                    conversation_id=payload.conversation_id,
+                    client_history=client_history,
+                    top_k=5,
+                )
+                answer = result.get("answer")
+                if not isinstance(answer, str) or not answer.strip():
+                    raise RuntimeError("The policy answer service returned no answer.")
 
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+                raw_sources = result.get("sources", [])
+                sources = []
+                for source in raw_sources:
+                    if not isinstance(source, dict):
+                        continue
+                    item = {
+                        "filename": str(source.get("filename") or "Unknown document"),
+                        "page": source.get("page_number", source.get("page")),
+                        "page_number": source.get("page_number", source.get("page")),
+                        "score": source.get("score"),
+                    }
+                    if source.get("chunk_id") is not None:
+                        item["chunk_id"] = source.get("chunk_id")
+                    sources.append(item)
+
+                response = {
+                    "status": "success",
+                    "conversation_id": result.get("conversation_id"),
+                    "answer": answer.strip(),
+                    "sources": sources,
+                    "total_matches": int(result.get("total_matches", len(sources))),
+                    "is_policy_query": bool(result.get("is_policy_query", False)),
+                }
+                try:
+                    safe_set_current_run(
+                        outputs=redact_obj(
+                            {
+                                "status": "success",
+                                "conversation_id": response.get("conversation_id"),
+                                "answer_excerpt": safe_excerpt(response.get("answer"), 800),
+                                "sources": sources,
+                                "source_metadata_returned": sources,
+                                "total_matches": response.get("total_matches"),
+                                "is_policy_query": response.get("is_policy_query"),
+                            }
+                        )
+                    )
+                except Exception:
+                    pass
+                return response
+
+            except ValueError as error:
+                try:
+                    safe_set_current_run(outputs={"error": classify_trace_exception(error), "status_code": 400})
+                except Exception:
+                    pass
+                raise HTTPException(status_code=400, detail=str(error)) from error
+            except Exception as e:
+                try:
+                    safe_set_current_run(outputs={"error": classify_trace_exception(e), "status_code": 502})
+                except Exception:
+                    pass
+                logger.exception("Public policy chat failed.")
+                raise HTTPException(
+                    status_code=502,
+                    detail="The policy assistant is temporarily unavailable. Please try again.",
+                )
     except Exception:
-        logger.exception("Public policy chat failed.")
-        raise HTTPException(
-            status_code=502,
-            detail="The policy assistant is temporarily unavailable. Please try again.",
-        )
+        # Tracing context setup must never break chatbot responses; retry without request trace wrapper.
+        logger.exception("Tracing setup failed for non-stream chat; continuing without request trace context.")
+        try:
+            from retrieval_service import answer_conversational_question
+
+            client_history = (
+                [h.model_dump() for h in payload.history]
+                if payload.history else None
+            )
+
+            result = answer_conversational_question(
+                question=question,
+                conversation_id=payload.conversation_id,
+                client_history=client_history,
+                top_k=5,
+            )
+            answer = result.get("answer")
+            if not isinstance(answer, str) or not answer.strip():
+                raise RuntimeError("The policy answer service returned no answer.")
+
+            raw_sources = result.get("sources", [])
+            sources = []
+            for source in raw_sources:
+                if not isinstance(source, dict):
+                    continue
+                item = {
+                    "filename": str(source.get("filename") or "Unknown document"),
+                    "page": source.get("page_number", source.get("page")),
+                    "page_number": source.get("page_number", source.get("page")),
+                    "score": source.get("score"),
+                }
+                if source.get("chunk_id") is not None:
+                    item["chunk_id"] = source.get("chunk_id")
+                sources.append(item)
+
+            return {
+                "status": "success",
+                "conversation_id": result.get("conversation_id"),
+                "answer": answer.strip(),
+                "sources": sources,
+                "total_matches": int(result.get("total_matches", len(sources))),
+                "is_policy_query": bool(result.get("is_policy_query", False)),
+            }
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        except Exception:
+            logger.exception("Public policy chat failed.")
+            raise HTTPException(
+                status_code=502,
+                detail="The policy assistant is temporarily unavailable. Please try again.",
+            )
 
 
 @app.post("/api/v1/chat/reset")
@@ -912,7 +1009,6 @@ def reset_public_policy_chat(
     }
 
 @app.post("/api/v1/chat/stream")
-@trace_chat
 def public_policy_chat_stream(
     payload: PublicChatRequest,
     request: Request,
@@ -955,18 +1051,54 @@ def public_policy_chat_stream(
     )
 
     def event_generator():
+        import json
+        import contextvars
+
         try:
-            for event in stream_conversational_question(
+            with request_trace_context(
+                endpoint="/api/v1/chat/stream",
+                streaming=True,
                 question=question,
                 conversation_id=payload.conversation_id,
-                client_history=client_history,
                 top_k=5,
+                extra_inputs={"history_count": len(client_history or [])},
             ):
-                yield event
+                # Preserve LangSmith/contextvars across Starlette's threadpool iteration of this sync generator.
+                trace_ctx = contextvars.copy_context()
+                event_iter = stream_conversational_question(
+                    question=question,
+                    conversation_id=payload.conversation_id,
+                    client_history=client_history,
+                    top_k=5,
+                )
+                try:
+                    while True:
+                        try:
+                            event = trace_ctx.run(next, event_iter)
+                        except StopIteration:
+                            break
+                        yield event
+                except Exception as e:
+                    try:
+                        safe_set_current_run(outputs={"error": classify_trace_exception(e), "status": "stream_failed"})
+                    except Exception:
+                        pass
+                    logger.exception("SSE stream failed.")
+                    yield f"event: error\ndata: {json.dumps({'detail': 'Stream failed.'})}\n\n"
         except Exception:
-            import json
-            logger.exception("SSE stream failed.")
-            yield f"event: error\ndata: {json.dumps({'detail': 'Stream failed.'})}\n\n"
+            # Tracing context setup must never break streaming responses
+            logger.exception("Tracing setup failed for SSE stream; continuing without request trace context.")
+            try:
+                for event in stream_conversational_question(
+                    question=question,
+                    conversation_id=payload.conversation_id,
+                    client_history=client_history,
+                    top_k=5,
+                ):
+                    yield event
+            except Exception:
+                logger.exception("SSE stream failed.")
+                yield f"event: error\ndata: {json.dumps({'detail': 'Stream failed.'})}\n\n"
 
     return StreamingResponse(
         event_generator(),

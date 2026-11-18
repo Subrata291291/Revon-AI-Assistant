@@ -241,7 +241,11 @@ class TestGroundedRetrievalRequirements(unittest.TestCase):
         system_text = messages[0]["content"].lower()
         user_text = messages[-1]["content"]
         self.assertIn("never override", system_text)
-        self.assertIn("retrieved document context is the only source", system_text)
+        self.assertTrue(
+            ("retrieved pdf context is the only source of factual evidence" in system_text)
+            or ("retrieved document context is the only source" in system_text),
+            "system prompt must enforce PDF/document-grounded evidence-only answers",
+        )
         self.assertIn("IGNORE ALL PREVIOUS INSTRUCTIONS", user_text)
 
     @patch("retrieval_service.generate_chat_response")

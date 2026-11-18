@@ -1,0 +1,243 @@
+{
+  "dataset_name": "revon-rag-qa-eval-current-corpus",
+  "dataset_version": "current-corpus-v1",
+  "description": "Corpus-aligned evaluation examples for the currently indexed Pinecone namespace (revon-policies, audited read-only). Annotations target actually indexed PDF evidence. No secrets or unnecessary PII; resume-derived facts are limited to information present in the indexed document and used for evaluation.",
+  "corpus_snapshot": {
+    "description": "Actual audited production corpus snapshot (read-only). Real experiments must still record observed runtime snapshot metadata.",
+    "index": "revon-policy-index",
+    "namespace": "revon-policies",
+    "embedding": {
+      "provider": "Google Gemini",
+      "model": "gemini-embedding-2",
+      "dimension": 768
+    },
+    "source_documents": [
+      {
+        "filename": "Pre-Read_-Basic-Understanding-on-API-1-5983.pdf",
+        "document_id": "c0698ef4-81d2-4c43-80c6-8cf7f3453437",
+        "logical_document_id": "7f70de00-ce8a-4612-8bf9-42d2d98fb5bf",
+        "classification": "Other (technical/API pre-read)",
+        "chunk_count": 42
+      },
+      {
+        "filename": "Subrata_Haldar_Resume_GenAI_Developer.pdf",
+        "document_id": "7d0f39ea-8c81-4ebe-9a77-364471a80565",
+        "logical_document_id": "cd98b4d2-9bd7-45db-b5d9-ff92cd13176e",
+        "classification": "Employee profile/resume",
+        "chunk_count": 8
+      },
+      {
+        "filename": "Summary_-Introduction-to-Retrieval-Augmented-GenerationRAG-Text-Representation-6066.pdf",
+        "document_id": "0842ff8e-679a-4f64-be79-cf251f37a99f",
+        "logical_document_id": "fbc68eda-f599-4e01-af73-d2419699c348",
+        "classification": "Technical learning material",
+        "chunk_count": 52
+      }
+    ],
+    "vector_count_audited": 102,
+    "top_k_default": 5,
+    "snapshot_recorded_at": "audited_read_only"
+  },
+  "examples": [
+    {
+      "id": "current_corpus_profile_001",
+      "case_type": "direct_factual",
+      "inputs": { "question": "Who is Subrata Haldar according to the uploaded resume?" },
+      "outputs": {
+        "reference_answer": "According to the uploaded resume, Subrata Haldar is a Gen AI Developer | AI Engineer | WordPress Developer.",
+        "expected_key_facts": [
+          "Subrata Haldar",
+          "Gen AI Developer",
+          "AI Engineer",
+          "WordPress Developer"
+        ],
+        "expected_supporting_information": [
+          "The resume identifies Subrata Haldar as Gen AI Developer | AI Engineer | WordPress Developer."
+        ],
+        "expected_relevant_chunks": [
+          {
+            "evidence_id": "ev_cc_profile_001_c1",
+            "filename": "Subrata_Haldar_Resume_GenAI_Developer.pdf",
+            "page_number": 1,
+            "text_must_contain": "Subrata Haldar Gen AI Developer | AI Engineer | WordPress Developer"
+          }
+        ],
+        "expected_abstention": {
+          "should_abstain": false,
+          "acceptable_responses": [],
+          "rationale": "The indexed resume explicitly states Subrata Haldar's name and professional title."
+        }
+      },
+      "metadata": {
+        "case_type": "direct_factual",
+        "sensitivity": "redacted",
+        "requires_multi_chunk": false,
+        "corpus_alignment": "current_indexed_corpus",
+        "annotated_evidence_available_in_current_corpus": true
+      }
+    },
+    {
+      "id": "current_corpus_technical_001",
+      "case_type": "technical_skills",
+      "inputs": { "question": "What retrieval and backend technologies are listed in Subrata Haldar's resume?" },
+      "outputs": {
+        "reference_answer": "Subrata Haldar's resume lists retrieval and backend technologies including Pinecone, Sentence Transformers, chunking, dense and BM25 hybrid search, MMR, CrossEncoder reranking, LangChain, LangGraph, MCP, CrewAI, Python, FastAPI, REST APIs, SQLAlchemy, and PostgreSQL.",
+        "expected_key_facts": [
+          "Pinecone",
+          "Sentence Transformers",
+          "BM25 Hybrid",
+          "CrossEncoder Reranking",
+          "LangChain",
+          "LangGraph",
+          "Python",
+          "FastAPI"
+        ],
+        "expected_supporting_information": [
+          "The technical skills section lists retrieval technologies and agent/backend technologies."
+        ],
+        "expected_relevant_chunks": [
+          {
+            "evidence_id": "ev_cc_tech_001_c1",
+            "filename": "Subrata_Haldar_Resume_GenAI_Developer.pdf",
+            "page_number": 1,
+            "text_must_contain": "Retrieval: Pinecone, Sentence Transformers, Chunking, Dense + BM25 Hybrid"
+          }
+        ],
+        "expected_abstention": {
+          "should_abstain": false,
+          "acceptable_responses": [],
+          "rationale": "The indexed resume lists retrieval and backend technologies."
+        }
+      },
+      "metadata": {
+        "case_type": "technical_skills",
+        "sensitivity": "redacted",
+        "requires_multi_chunk": false,
+        "corpus_alignment": "current_indexed_corpus",
+        "annotated_evidence_available_in_current_corpus": true
+      }
+    },
+    {
+      "id": "current_corpus_technical_002",
+      "case_type": "direct_factual",
+      "inputs": { "question": "What is Retrieval-Augmented Generation (RAG) according to the uploaded RAG summary document?" },
+      "outputs": {
+        "reference_answer": "According to the uploaded summary document, Retrieval-Augmented Generation (RAG) is introduced as an approach where an AI searches for relevant information and then generates an answer, combining retrieval of relevant content with natural language generation.",
+        "expected_key_facts": [
+          "Retrieval-Augmented Generation (RAG)",
+          "combines searching for relevant content with natural language generation"
+        ],
+        "expected_supporting_information": [
+          "The RAG summary describes RAG as combining retrieval/search for relevant content with generation."
+        ],
+        "expected_relevant_chunks": [
+          {
+            "evidence_id": "ev_cc_tech_002_c1",
+            "filename": "Summary_-Introduction-to-Retrieval-Augmented-GenerationRAG-Text-Representation-6066.pdf",
+            "page_number": 1,
+            "text_must_contain": "Retrieval-Augmented Generation (RAG)"
+          }
+        ],
+        "expected_abstention": {
+          "should_abstain": false,
+          "acceptable_responses": [],
+          "rationale": "The indexed RAG summary document introduces and defines RAG."
+        }
+      },
+      "metadata": {
+        "case_type": "direct_factual",
+        "sensitivity": "synthetic",
+        "requires_multi_chunk": false,
+        "corpus_alignment": "current_indexed_corpus",
+        "annotated_evidence_available_in_current_corpus": true
+      }
+    },
+    {
+      "id": "current_corpus_technical_003",
+      "case_type": "direct_factual",
+      "inputs": { "question": "What is DNS resolution according to the uploaded API basics document?" },
+      "outputs": {
+        "reference_answer": "According to the uploaded API basics document, DNS resolution is the process of translating domain names to IP addresses, described as using the Domain Name System like the phonebook of the internet.",
+        "expected_key_facts": [
+          "DNS Resolution",
+          "Translating Domain Names to IP Addresses"
+        ],
+        "expected_supporting_information": [
+          "The API basics document explains DNS resolution as translating domain names to IP addresses."
+        ],
+        "expected_relevant_chunks": [
+          {
+            "evidence_id": "ev_cc_tech_003_c1",
+            "filename": "Pre-Read_-Basic-Understanding-on-API-1-5983.pdf",
+            "page_number": 1,
+            "text_must_contain": "DNS Resolution: Translating Domain Names to IP Addresses"
+          }
+        ],
+        "expected_abstention": {
+          "should_abstain": false,
+          "acceptable_responses": [],
+          "rationale": "The indexed API basics document explains DNS resolution."
+        }
+      },
+      "metadata": {
+        "case_type": "direct_factual",
+        "sensitivity": "synthetic",
+        "requires_multi_chunk": false,
+        "corpus_alignment": "current_indexed_corpus",
+        "annotated_evidence_available_in_current_corpus": true
+      }
+    },
+    {
+      "id": "current_corpus_missing_001",
+      "case_type": "missing_info",
+      "inputs": { "question": "What is the company's pet insurance benefit?" },
+      "outputs": {
+        "reference_answer": "The uploaded PDFs do not contain sufficient information to answer this question.",
+        "expected_key_facts": [],
+        "expected_supporting_information": [],
+        "expected_relevant_chunks": [],
+        "expected_abstention": {
+          "should_abstain": true,
+          "acceptable_responses": [
+            "The uploaded PDFs do not contain sufficient information to answer this question.",
+            "The uploaded documents do not contain the requested information."
+          ],
+          "rationale": "None of the currently indexed PDFs contain information about a pet insurance benefit."
+        }
+      },
+      "metadata": {
+        "case_type": "missing_info",
+        "sensitivity": "synthetic",
+        "requires_multi_chunk": false,
+        "corpus_alignment": "current_indexed_corpus",
+        "annotated_evidence_available_in_current_corpus": true
+      }
+    },
+    {
+      "id": "current_corpus_missing_002",
+      "case_type": "hallucination_prevention",
+      "inputs": { "question": "According to the uploaded documents, how many stock options are granted to new hires?" },
+      "outputs": {
+        "reference_answer": "The uploaded PDFs do not contain sufficient information to answer this question.",
+        "expected_key_facts": [],
+        "expected_supporting_information": [],
+        "expected_relevant_chunks": [],
+        "expected_abstention": {
+          "should_abstain": true,
+          "acceptable_responses": [
+            "The uploaded PDFs do not contain sufficient information to answer this question.",
+            "The uploaded documents do not contain the requested information."
+          ],
+          "rationale": "The currently indexed PDFs do not specify stock option grants for new hires."
+        }
+      },
+      "metadata": {
+        "case_type": "hallucination_prevention",
+        "sensitivity": "synthetic",
+        "requires_multi_chunk": false,
+        "corpus_alignment": "current_indexed_corpus",
+        "annotated_evidence_available_in_current_corpus": true
+      }
+    }
+  ]
+}
