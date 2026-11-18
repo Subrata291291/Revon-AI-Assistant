@@ -2,7 +2,7 @@
 /**
  * Plugin Name: RevOn Policy Chatbot
  * Description: Secure public policy PDF management and backend integration for RevOn Business Solutions.
- * Version: 1.5.2
+ * Version: 1.5.3
  * Author: RevOn Business Solutions
  * Text Domain: revon-policy-chatbot
  */
@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('REVON_PCB_VERSION', '1.5.2');
+define('REVON_PCB_VERSION', '1.5.3');
 
 register_activation_hook(__FILE__, 'revon_pcb_activate');
 
@@ -62,7 +62,9 @@ function revon_pcb_activate() {
         KEY logical_document_id (logical_document_id)
     ) {$charset};";
 
+    $wpdb->last_error = '';
     dbDelta($sql);
+    $documents_error = (string) $wpdb->last_error;
 
     $ops = revon_pcb_operations_table();
     $ops_sql = "CREATE TABLE {$ops} (
@@ -87,8 +89,38 @@ function revon_pcb_activate() {
         KEY logical_document_id (logical_document_id),
         KEY operation_status (operation_type, status)
     ) {$charset};";
+    $wpdb->last_error = '';
     dbDelta($ops_sql);
+    $operations_error = (string) $wpdb->last_error;
 
+    // Do not mark the schema current unless both tables really exist.
+    // dbDelta() can return without throwing even when a schema change failed.
+    $documents_exists = $wpdb->get_var(
+        $wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table))
+    ) === $table;
+    $operations_exists = $wpdb->get_var(
+        $wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($ops))
+    ) === $ops;
+
+    if (!$documents_exists || !$operations_exists || $documents_error !== '' || $operations_error !== '') {
+        $error_parts = array();
+        if (!$documents_exists) {
+            $error_parts[] = 'Documents table is missing.';
+        }
+        if (!$operations_exists) {
+            $error_parts[] = 'Operations table is missing.';
+        }
+        if ($documents_error !== '') {
+            $error_parts[] = 'Documents schema error: ' . $documents_error;
+        }
+        if ($operations_error !== '') {
+            $error_parts[] = 'Operations schema error: ' . $operations_error;
+        }
+        update_option('revon_pcb_db_upgrade_error', implode(' ', $error_parts), false);
+        return false;
+    }
+
+    delete_option('revon_pcb_db_upgrade_error');
     update_option('revon_pcb_db_version', REVON_PCB_VERSION);
 
     $dir = revon_pcb_private_dir();
@@ -113,7 +145,45 @@ function revon_pcb_activate() {
             );
         }
     }
+
+    return true;
 }
+
+/**
+ * Run schema upgrades after a plugin file update. WordPress activation hooks
+ * do not run merely because the plugin PHP file was replaced. This admin_init
+ * check safely re-runs dbDelta when the stored schema version is behind.
+ */
+function revon_pcb_maybe_upgrade_database() {
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+
+    $stored_version = (string) get_option('revon_pcb_db_version', '');
+    if (version_compare($stored_version, REVON_PCB_VERSION, '>=')) {
+        return;
+    }
+
+    revon_pcb_activate();
+}
+add_action('admin_init', 'revon_pcb_maybe_upgrade_database', 5);
+
+/** Show schema upgrade failures to administrators without exposing secrets. */
+function revon_pcb_database_upgrade_notice() {
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+
+    $error = (string) get_option('revon_pcb_db_upgrade_error', '');
+    if ($error === '') {
+        return;
+    }
+
+    echo '<div class="notice notice-error"><p><strong>RevOn Policy Chatbot database upgrade failed:</strong> ' .
+        esc_html($error) .
+        ' The schema version was not advanced. Contact the site administrator before uploading documents.</p></div>';
+}
+add_action('admin_notices', 'revon_pcb_database_upgrade_notice');
 
 
 /* =========================================================
@@ -359,6 +429,19 @@ function revon_pcb_get_active_policies() {
     );
 }
 
+/** Return the most recent upload operation for one document. */
+function revon_pcb_latest_upload_operation($document_id) {
+    global $wpdb;
+    $ops = revon_pcb_operations_table();
+    return $wpdb->get_row(
+        $wpdb->prepare(
+            "SELECT * FROM {$ops} WHERE operation_type = 'upload' AND document_id = %s ORDER BY id DESC LIMIT 1",
+            $document_id
+        ),
+        ARRAY_A
+    );
+}
+
 function revon_pcb_documents() {
     if (!current_user_can('manage_options')) {
         return;
@@ -513,6 +596,21 @@ function revon_pcb_documents() {
                                         <?php wp_nonce_field('revon_pcb_delete_' . $row['document_id']); ?>
                                         <button type="submit" class="button button-small button-link-delete">Delete</button>
                                     </form>
+                                <?php elseif ($row['status'] === 'processing'): ?>
+                                    <?php $upload_operation = revon_pcb_latest_upload_operation($row['document_id']); ?>
+                                    <?php if ($upload_operation && in_array($upload_operation['status'], array('uploading', 'reconciliation_required'), true)): ?>
+                                        <form method="post"
+                                              action="<?php echo esc_url(admin_url('admin-post.php')); ?>"
+                                              onsubmit="return confirm('Retry this exact upload using its existing operation IDs and stored private PDF? The PDF hash and operation ownership will be checked first.');">
+                                            <input type="hidden" name="action" value="revon_pcb_reconcile_upload">
+                                            <input type="hidden" name="document_id" value="<?php echo esc_attr($row['document_id']); ?>">
+                                            <?php wp_nonce_field('revon_pcb_reconcile_upload_' . $row['document_id']); ?>
+                                            <button type="submit" class="button button-small">Retry / Reconcile</button>
+                                        </form>
+                                        <span class="description">Operation: <?php echo esc_html($upload_operation['status']); ?></span>
+                                    <?php else: ?>
+                                        <span class="description">Deletion unavailable — reconcile lifecycle state first</span>
+                                    <?php endif; ?>
                                 <?php else: ?>
                                     <span class="description">Deletion unavailable — reconcile lifecycle state first</span>
                                 <?php endif; ?>
@@ -1249,7 +1347,346 @@ function revon_pcb_handle_upload() {
     revon_pcb_redirect(sprintf('Policy version %d indexed, verified and activated. Document ID: %s',$version,$document_id),'success');
 }
 /* =========================================================
- * 7. Verified document deletion lifecycle
+ * 7. Safe retry/reconciliation for an interrupted upload
+ * ======================================================= */
+
+add_action('admin_post_revon_pcb_reconcile_upload', 'revon_pcb_handle_reconcile_upload');
+
+/**
+ * Retry an interrupted upload without creating new IDs or bypassing the
+ * duplicate-file registry. The backend ingestion pipeline uses deterministic
+ * Pinecone vector IDs based on document_id/page/chunk, so a retry overwrites
+ * the same vector IDs instead of creating duplicate vectors.
+ */
+function revon_pcb_handle_reconcile_upload() {
+    if (!current_user_can('manage_options')) {
+        wp_die('Unauthorized', 403);
+    }
+
+    $document_id = isset($_POST['document_id'])
+        ? sanitize_text_field(wp_unslash($_POST['document_id']))
+        : '';
+    if (!$document_id || !preg_match('/^[a-f0-9-]{36}$/i', $document_id)) {
+        revon_pcb_redirect('A valid document ID is required for reconciliation.', 'error');
+    }
+    check_admin_referer('revon_pcb_reconcile_upload_' . $document_id);
+
+    global $wpdb;
+    $docs = revon_pcb_table();
+    $ops = revon_pcb_operations_table();
+
+    $document = $wpdb->get_row(
+        $wpdb->prepare("SELECT * FROM {$docs} WHERE document_id = %s LIMIT 1", $document_id),
+        ARRAY_A
+    );
+    $operation = revon_pcb_latest_upload_operation($document_id);
+
+    if (!$document || !$operation) {
+        revon_pcb_redirect('The document or its original upload operation was not found. No changes were made.', 'error');
+    }
+
+    // Never retry completed, active, deleted, failed, or unrelated operations.
+    if (
+        $document['status'] !== 'processing' ||
+        !in_array($operation['status'], array('uploading', 'reconciliation_required'), true) ||
+        (string) $operation['document_id'] !== $document_id ||
+        (string) $operation['logical_document_id'] !== (string) $document['logical_document_id'] ||
+        (int) $operation['version'] !== (int) $document['version'] ||
+        !preg_match('/^[a-f0-9-]{36}$/i', (string) $operation['request_id'])
+    ) {
+        revon_pcb_redirect('Document and operation states do not match a safe retry. No changes were made.', 'error');
+    }
+
+    $logical_id = (string) $document['logical_document_id'];
+    $version = (int) $document['version'];
+    $request_id = (string) $operation['request_id'];
+    $previous_id = !empty($operation['previous_document_id']) ? (string) $operation['previous_document_id'] : null;
+
+    if ($logical_id === '' || $version < 1 || !preg_match('/^[a-f0-9]{64}$/i', (string) $document['file_hash'])) {
+        revon_pcb_redirect('Document identity or SHA-256 metadata is invalid. Retry stopped.', 'error');
+    }
+
+    // Verify the retained source file is inside the configured private directory.
+    $private_dir = realpath(revon_pcb_private_dir());
+    $stored_path = realpath((string) $document['storage_path']);
+    if (!$private_dir || !$stored_path || !is_file($stored_path) || !is_readable($stored_path)) {
+        revon_pcb_redirect('The original private PDF is missing or unreadable. Retry stopped; upload a recovery copy only after administrator review.', 'error');
+    }
+    $private_prefix = trailingslashit($private_dir);
+    if (strpos($stored_path, $private_prefix) !== 0) {
+        revon_pcb_redirect('The stored PDF path is outside the private document directory. Retry stopped.', 'error');
+    }
+
+    $actual_hash = hash_file('sha256', $stored_path);
+    if (!$actual_hash || !hash_equals(strtolower((string) $document['file_hash']), strtolower($actual_hash))) {
+        revon_pcb_redirect('The stored PDF SHA-256 does not match the document registry. Retry stopped.', 'error');
+    }
+    $pdf_handle = fopen($stored_path, 'rb');
+    $pdf_signature = $pdf_handle ? fread($pdf_handle, 5) : '';
+    if ($pdf_handle) fclose($pdf_handle);
+    if ($pdf_signature !== '%PDF-') {
+        revon_pcb_redirect('The retained source file is not a valid PDF. Retry stopped.', 'error');
+    }
+
+    // A new-version retry is allowed only while its previous version remains active.
+    if ($previous_id) {
+        $previous = $wpdb->get_row(
+            $wpdb->prepare("SELECT document_id, logical_document_id, status FROM {$docs} WHERE document_id = %s LIMIT 1", $previous_id),
+            ARRAY_A
+        );
+        if (!$previous || $previous['status'] !== 'active' || $previous['logical_document_id'] !== $logical_id) {
+            revon_pcb_redirect('The previous policy version is not still active. Retry stopped for manual reconciliation.', 'error');
+        }
+    }
+
+    $backend = revon_pcb_backend_config();
+    if (is_wp_error($backend)) {
+        revon_pcb_redirect($backend->get_error_message(), 'error');
+    }
+
+    $lock_name = 'revon_policy_' . md5($logical_id);
+    $lock = $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 15)', $lock_name));
+    if ((string) $lock !== '1') {
+        revon_pcb_redirect('Could not acquire the policy lifecycle lock. Try again later.', 'error');
+    }
+    $release = function () use ($wpdb, $lock_name) {
+        $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock_name));
+    };
+
+    // Re-read under the lock to prevent a stale admin page from retrying a changed row.
+    $document_now = $wpdb->get_row(
+        $wpdb->prepare("SELECT * FROM {$docs} WHERE document_id = %s LIMIT 1", $document_id),
+        ARRAY_A
+    );
+    $operation_now = $wpdb->get_row(
+        $wpdb->prepare("SELECT * FROM {$ops} WHERE request_id = %s LIMIT 1", $request_id),
+        ARRAY_A
+    );
+    if (
+        !$document_now || !$operation_now ||
+        $document_now['status'] !== 'processing' ||
+        !in_array($operation_now['status'], array('uploading', 'reconciliation_required'), true) ||
+        (string) $operation_now['document_id'] !== $document_id ||
+        (string) $operation_now['payload_hash'] !== (string) $operation['payload_hash']
+    ) {
+        $release();
+        revon_pcb_redirect('The document operation changed while preparing retry. Refresh the registry and inspect its state.', 'error');
+    }
+
+    $attempt_count = (int) $operation_now['attempt_count'] + 1;
+    if (!revon_pcb_operation_update($request_id, array(
+        'status' => 'uploading',
+        'attempt_count' => $attempt_count,
+        'last_error' => null
+    ))) {
+        $release();
+        revon_pcb_redirect('Could not persist the retry attempt. No backend request was sent.', 'error');
+    }
+
+    $upload_type = $previous_id ? 'new_version' : 'new_policy';
+    $curl_file = new CURLFile($stored_path, 'application/pdf', sanitize_file_name($document['filename']));
+    $uploaded = revon_pcb_backend_post_form(
+        $backend['base'] . '/api/v1/documents/upload',
+        $backend['token'],
+        array(
+            'file' => $curl_file,
+            'upload_type' => $upload_type,
+            'logical_document_id' => $logical_id,
+            'document_id' => $document_id,
+            'request_id' => $request_id,
+            'version' => (string) $version
+        )
+    );
+
+    if (is_wp_error($uploaded)) {
+        revon_pcb_operation_update($request_id, array(
+            'status' => 'reconciliation_required',
+            'last_error' => 'Retry ingestion returned an ambiguous or failed backend result: ' . $uploaded->get_error_message()
+        ));
+        $release();
+        revon_pcb_redirect('Retry did not complete. The original PDF and operation IDs were preserved. Check Render logs before another retry. ' . $uploaded->get_error_message(), 'error');
+    }
+
+    if (
+        ($uploaded['status'] ?? '') !== 'success' ||
+        ($uploaded['document_id'] ?? '') !== $document_id ||
+        ($uploaded['logical_document_id'] ?? '') !== $logical_id ||
+        ($uploaded['request_id'] ?? '') !== $request_id ||
+        (int) ($uploaded['version'] ?? 0) !== $version ||
+        ($uploaded['is_active'] ?? null) !== false
+    ) {
+        revon_pcb_operation_update($request_id, array(
+            'status' => 'reconciliation_required',
+            'last_error' => 'Retry returned a mismatched ingestion response. Manual reconciliation is required.'
+        ));
+        $release();
+        revon_pcb_redirect('Backend response did not match the original operation. Nothing was activated; reconcile manually.', 'error');
+    }
+
+    $expected = absint($uploaded['expected_vectors'] ?? $uploaded['total_chunks'] ?? 0);
+    if ($expected < 1) {
+        revon_pcb_operation_update($request_id, array(
+            'status' => 'reconciliation_required',
+            'last_error' => 'Backend returned an invalid expected vector count during retry.'
+        ));
+        $release();
+        revon_pcb_redirect('Backend returned an invalid vector count. No activation was attempted.', 'error');
+    }
+
+    $metadata_updated = $wpdb->update(
+        $docs,
+        array(
+            'total_pages' => absint($uploaded['total_pages'] ?? 0),
+            'total_chunks' => $expected,
+            'updated_at' => current_time('mysql')
+        ),
+        array('document_id' => $document_id),
+        array('%d', '%d', '%s'),
+        array('%s')
+    );
+    if ($metadata_updated === false || !revon_pcb_operation_update($request_id, array(
+        'status' => 'indexed',
+        'expected_vectors' => $expected,
+        'result_json' => wp_json_encode($uploaded),
+        'last_error' => null
+    ))) {
+        revon_pcb_operation_update($request_id, array(
+            'status' => 'reconciliation_required',
+            'last_error' => 'Indexing succeeded but WordPress could not persist indexed metadata.'
+        ));
+        $release();
+        revon_pcb_redirect('Indexing succeeded but WordPress metadata could not be saved. The PDF is retained; reconcile before retrying.', 'error');
+    }
+
+    $status_url = add_query_arg(
+        array(
+            'expected_vectors' => $expected,
+            'request_id' => $request_id,
+            'logical_document_id' => $logical_id
+        ),
+        $backend['base'] . '/api/v1/documents/' . rawurlencode($document_id) . '/status'
+    );
+    $verified = revon_pcb_backend_get_json($status_url, $backend['token']);
+    if (
+        is_wp_error($verified) ||
+        ($verified['verified'] ?? false) !== true ||
+        ($verified['ownership_verified'] ?? false) !== true
+    ) {
+        $why = is_wp_error($verified) ? $verified->get_error_message() : 'Pinecone vector count and ownership verification did not both succeed.';
+        revon_pcb_operation_update($request_id, array(
+            'status' => 'reconciliation_required',
+            'last_error' => 'Retry indexed vectors but Pinecone ownership verification failed: ' . $why
+        ));
+        $release();
+        revon_pcb_redirect('Vectors were indexed but not fully verified. The document remains inactive. ' . $why, 'error');
+    }
+
+    if (!revon_pcb_operation_update($request_id, array('status' => 'verified'))) {
+        revon_pcb_operation_update($request_id, array('status' => 'reconciliation_required', 'last_error' => 'Could not persist Pinecone verification state.'));
+        $release();
+        revon_pcb_redirect('Pinecone verified the vectors, but WordPress could not persist the verification state. No activation was attempted.', 'error');
+    }
+
+    if (!revon_pcb_operation_update($request_id, array('status' => 'activating'))) {
+        revon_pcb_operation_update($request_id, array('status' => 'reconciliation_required', 'last_error' => 'Could not persist activation intent.'));
+        $release();
+        revon_pcb_redirect('Could not persist activation intent. No activation request was sent.', 'error');
+    }
+
+    $activation_fields = array(
+        'document_id' => $document_id,
+        'logical_document_id' => $logical_id,
+        'version' => (string) $version,
+        'expected_vectors' => (string) $expected,
+        'request_id' => $request_id
+    );
+    if ($previous_id) {
+        $activation_fields['previous_document_id'] = $previous_id;
+    }
+    $activated = revon_pcb_backend_post_form(
+        $backend['base'] . '/api/v1/documents/activate',
+        $backend['token'],
+        $activation_fields
+    );
+    if (is_wp_error($activated)) {
+        revon_pcb_operation_update($request_id, array(
+            'status' => 'reconciliation_required',
+            'last_error' => 'Activation outcome is unknown during retry: ' . $activated->get_error_message()
+        ));
+        $release();
+        revon_pcb_redirect('Activation outcome is unknown. Do not upload again; inspect Pinecone and Render logs first. ' . $activated->get_error_message(), 'error');
+    }
+
+    $activation_validation = revon_pcb_validate_activation_response($activated, array(
+        'document_id' => $document_id,
+        'logical_document_id' => $logical_id,
+        'version' => $version,
+        'request_id' => $request_id,
+        'previous_document_id' => $previous_id
+    ));
+    if (is_wp_error($activation_validation)) {
+        revon_pcb_operation_update($request_id, array(
+            'status' => 'reconciliation_required',
+            'last_error' => 'Activation response verification failed: ' . $activation_validation->get_error_message()
+        ));
+        $release();
+        revon_pcb_redirect('Backend activation could not be fully verified. WordPress registry was not changed. ' . $activation_validation->get_error_message(), 'error');
+    }
+
+    if ($wpdb->query('START TRANSACTION') === false) {
+        revon_pcb_operation_update($request_id, array('status' => 'reconciliation_required', 'last_error' => 'Could not start registry transaction after Pinecone activation.'));
+        $release();
+        revon_pcb_redirect('Pinecone activation succeeded, but WordPress could not start its registry transaction. Manual reconciliation is required.', 'error');
+    }
+
+    $ok = true;
+    if ($previous_id) {
+        $old_updated = $wpdb->update(
+            $docs,
+            array('status' => 'inactive', 'updated_at' => current_time('mysql')),
+            array('document_id' => $previous_id, 'status' => 'active'),
+            array('%s', '%s'),
+            array('%s', '%s')
+        );
+        if ($old_updated !== 1) $ok = false;
+    }
+    if ($ok) {
+        $new_updated = $wpdb->update(
+            $docs,
+            array('status' => 'active', 'updated_at' => current_time('mysql')),
+            array('document_id' => $document_id, 'status' => 'processing'),
+            array('%s', '%s'),
+            array('%s', '%s')
+        );
+        if ($new_updated !== 1) $ok = false;
+    }
+
+    if (!$ok || $wpdb->query('COMMIT') === false) {
+        $wpdb->query('ROLLBACK');
+        revon_pcb_operation_update($request_id, array(
+            'status' => 'reconciliation_required',
+            'last_error' => 'Pinecone activation succeeded but WordPress registry transaction failed.'
+        ));
+        $release();
+        revon_pcb_redirect('Pinecone activation succeeded, but the WordPress registry transaction failed. Manual reconciliation is required.', 'error');
+    }
+
+    if (!revon_pcb_operation_update($request_id, array(
+        'status' => 'completed',
+        'last_error' => null,
+        'result_json' => wp_json_encode(array('upload' => $uploaded, 'verification' => $verified, 'activation' => $activated))
+    ))) {
+        $release();
+        revon_pcb_redirect('The policy is active in the registry, but the operation ledger could not be marked completed. Manual audit is required.', 'error');
+    }
+
+    $release();
+    revon_pcb_redirect(sprintf('Policy version %d successfully retried, verified and activated. Document ID: %s', $version, $document_id), 'success');
+}
+
+
+/* =========================================================
+ * 8. Verified document deletion lifecycle
  * ======================================================= */
 
 add_action('admin_post_revon_pcb_deactivate_document', 'revon_pcb_handle_deactivate_document');
@@ -2636,7 +3073,7 @@ add_shortcode('revon_policy_chatbot', function () {
         <section class="revon-chat-panel" role="dialog" aria-label="RevOn Policy Assistant" aria-modal="false" hidden>
             <header class="revon-chat-header">
                 <div class="revon-chat-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="13" rx="3"/><path d="M9 12h.01M15 12h.01M9 16h6M12 3v4M10 3h4"/></svg></div>
-                <div class="revon-chat-heading"><h2 class="revon-chat-title">RevOn Policy Assistant</h2><p class="revon-chat-subtitle"><span class="revon-chat-online"></span>Online · Ask about available documents</p></div>
+                <div class="revon-chat-heading"><h2 class="revon-chat-title">RevOn AI Assistant</h2><p class="revon-chat-subtitle"><span class="revon-chat-online"></span>Online</p></div>
                 <div class="revon-chat-controls">
                     <button type="button" class="revon-chat-window-control revon-chat-reset" aria-label="Start new conversation" title="Start new conversation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
                     <button type="button" class="revon-chat-window-control revon-chat-minimize" aria-label="Minimize chat" title="Minimize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
