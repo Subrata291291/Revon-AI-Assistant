@@ -6,16 +6,18 @@ from ingestion_service import ingest_pdf
 
 class TestIngestionService(unittest.TestCase):
 
+    @patch("ingestion_service.list_document_vector_ids")
     @patch("ingestion_service.upsert_vectors")
-    @patch("ingestion_service.generate_embeddings")
+    @patch("ingestion_service.iter_embeddings")
     @patch("ingestion_service.create_chunks")
     @patch("ingestion_service.extract_text_from_pdf")
     def test_successful_version_ingestion(
         self,
         mock_extract,
         mock_chunks,
-        mock_embeddings,
-        mock_upsert
+        mock_iter_embeddings,
+        mock_upsert,
+        mock_list_ids,
     ):
         mock_extract.return_value = [
             {"page_number": 1, "text": "Policy content"}
@@ -29,14 +31,17 @@ class TestIngestionService(unittest.TestCase):
             }
         ]
 
-        mock_embeddings.return_value = [
-            {
-                "page_number": 1,
-                "chunk_index": 0,
-                "text": "Policy content",
-                "embedding": [0.1] * 768
-            }
-        ]
+        mock_list_ids.return_value = []
+        mock_iter_embeddings.return_value = iter([
+            [
+                {
+                    "page_number": 1,
+                    "chunk_index": 0,
+                    "text": "Policy content",
+                    "embedding": [0.1] * 768
+                }
+            ]
+        ])
 
         mock_upsert.return_value = {
             "status": "success",
@@ -58,6 +63,7 @@ class TestIngestionService(unittest.TestCase):
         self.assertEqual(result["request_id"], "request-123")
         self.assertEqual(result["version"], 2)
         self.assertEqual(result["expected_vectors"], 1)
+        self.assertEqual(result["total_vectors"], 1)
         self.assertFalse(result["is_active"])
         self.assertEqual(result["activation_status"], "pending")
 
@@ -99,16 +105,18 @@ class TestIngestionService(unittest.TestCase):
                 request_id=" "
             )
 
+    @patch("ingestion_service.list_document_vector_ids")
     @patch("ingestion_service.upsert_vectors")
-    @patch("ingestion_service.generate_embeddings")
+    @patch("ingestion_service.iter_embeddings")
     @patch("ingestion_service.create_chunks")
     @patch("ingestion_service.extract_text_from_pdf")
     def test_upsert_failure_preserves_vectors_for_reconciliation(
         self,
         mock_extract,
         mock_chunks,
-        mock_embeddings,
-        mock_upsert
+        mock_iter_embeddings,
+        mock_upsert,
+        mock_list_ids,
     ):
         mock_extract.return_value = [
             {"page_number": 1, "text": "Policy content"}
@@ -122,14 +130,17 @@ class TestIngestionService(unittest.TestCase):
             }
         ]
 
-        mock_embeddings.return_value = [
-            {
-                "page_number": 1,
-                "chunk_index": 0,
-                "text": "Policy content",
-                "embedding": [0.1] * 768
-            }
-        ]
+        mock_list_ids.return_value = []
+        mock_iter_embeddings.return_value = iter([
+            [
+                {
+                    "page_number": 1,
+                    "chunk_index": 0,
+                    "text": "Policy content",
+                    "embedding": [0.1] * 768
+                }
+            ]
+        ])
 
         mock_upsert.side_effect = RuntimeError("Pinecone upload timed out")
 
@@ -150,16 +161,18 @@ class TestIngestionService(unittest.TestCase):
         self.assertIn("request-123", str(error_context.exception))
         mock_upsert.assert_called_once()
 
+    @patch("ingestion_service.list_document_vector_ids")
     @patch("ingestion_service.upsert_vectors")
-    @patch("ingestion_service.generate_embeddings")
+    @patch("ingestion_service.iter_embeddings")
     @patch("ingestion_service.create_chunks")
     @patch("ingestion_service.extract_text_from_pdf")
     def test_expected_vector_count_is_passed_to_upsert(
         self,
         mock_extract,
         mock_chunks,
-        mock_embeddings,
-        mock_upsert
+        mock_iter_embeddings,
+        mock_upsert,
+        mock_list_ids,
     ):
         mock_extract.return_value = [
             {"page_number": 1, "text": "First page"},
@@ -171,20 +184,23 @@ class TestIngestionService(unittest.TestCase):
             {"page_number": 2, "chunk_index": 0, "text": "Second page"}
         ]
 
-        mock_embeddings.return_value = [
-            {
-                "page_number": 1,
-                "chunk_index": 0,
-                "text": "First page",
-                "embedding": [0.1] * 768
-            },
-            {
-                "page_number": 2,
-                "chunk_index": 0,
-                "text": "Second page",
-                "embedding": [0.2] * 768
-            }
-        ]
+        mock_list_ids.return_value = []
+        mock_iter_embeddings.return_value = iter([
+            [
+                {
+                    "page_number": 1,
+                    "chunk_index": 0,
+                    "text": "First page",
+                    "embedding": [0.1] * 768
+                },
+                {
+                    "page_number": 2,
+                    "chunk_index": 0,
+                    "text": "Second page",
+                    "embedding": [0.2] * 768
+                }
+            ]
+        ])
 
         mock_upsert.return_value = {
             "status": "success",
@@ -205,6 +221,11 @@ class TestIngestionService(unittest.TestCase):
             mock_upsert.call_args.kwargs["expected_vectors"],
             2
         )
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
+
 
 
 if __name__ == "__main__":

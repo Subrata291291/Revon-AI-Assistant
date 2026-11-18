@@ -131,6 +131,18 @@ backend/
 | Namespace | `revon-policies` |
 | Vector ID format | `{document_id}-page-{page}-chunk-{chunk}` |
 
+## Gemini Daily Embedding Quota Protection (local estimate)
+
+The embedding pipeline includes configurable RPM pacing, bounded retry/backoff (`RetryInfo` aware), incremental/resumable ingestion, and **persistent local daily request-budget protection** (counts every embedding API request attempt, including retries). **Local accounting is an estimate only; Google quota/usage is authoritative.** No automatic reset is performed based on assumed quota reset time.
+
+**Key env vars:** `GEMINI_EMBEDDING_DAILY_BUDGET_ENABLED`, `GEMINI_EMBEDDING_DAILY_REQUEST_BUDGET`, `GEMINI_EMBEDDING_DAILY_BUDGET_WINDOW_ID` (operator-controlled reset/window rotation), `GEMINI_EMBEDDING_DAILY_BUDGET_STATE_PATH`, `GEMINI_EMBEDDING_DAILY_BUDGET_RECOVERY_MODE` (explicit recovery only).
+
+**Required for production accounting (durability):** do **not** rely on ephemeral/temp storage. Set `GEMINI_EMBEDDING_DAILY_BUDGET_STATE_PATH` to a **durable persistent volume/path** that survives restarts and deployments/redeploys for the same environment. Local filesystem persistence does **not** guarantee survival across deployments/hosts unless the same durable volume is retained and remounted.
+
+**Fail-closed state handling:** if an existing state file is corrupted or unreadable, the service refuses to issue further Gemini embedding requests (no silent counter reset). Operator must repair the state file or perform explicit controlled recovery (`GEMINI_EMBEDDING_DAILY_BUDGET_RECOVERY_MODE=reset`) after verifying accounting impact.
+
+**Concurrency:** current filesystem budget store uses a process-local lock and is **not safe for multiple processes/instances** sharing a budget. Distributed/multi-worker production requires a shared transactional store (e.g. PostgreSQL/Supabase atomic reservation design). See `backend/docs/gemini_embedding_daily_quota_hardening.md` for persistence, recovery, and concurrency design/evaluation. **Production readiness for distributed deployments is not claimed without verified shared-storage/concurrency guarantees.**
+
 ---
 
 ## Evaluation
