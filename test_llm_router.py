@@ -370,14 +370,28 @@ class TestMultiLLMFallbackRouter(unittest.TestCase):
     # ------------------------------------------------------------------------
     # Test 11: Conversation history remains intact after switching providers.
     # ------------------------------------------------------------------------
-    def test_11_conversation_history_remains_intact_after_fallback(self):
-        # Turn 1: Groq answers
+    @patch("retrieval_service.retrieve_context")
+    @patch("retrieval_service.analyze_query_intent")
+    def test_11_conversation_history_remains_intact_after_fallback(self, mock_intent, mock_retrieve):
+        from retrieval_service import IntentAnalysisResult
+
+        # Turn 1: Groq answers (capability/conversational, no retrieval)
         p_groq_1 = MockProvider("groq", return_text="My name is RevOn Assistant.")
         p_or = MockProvider("openrouter", return_text="OpenRouter")
         router1 = LLMProviderRouter(priority=["groq", "openrouter"], providers={"groq": p_groq_1, "openrouter": p_or})
         set_router(router1)
+        mock_intent.return_value = IntentAnalysisResult({
+            "intent": "capability_question",
+            "is_relevant": True,
+            "requires_retrieval": False,
+            "resolved_question": "Who are you?",
+            "search_query": None,
+            "standalone_query": None,
+            "reason": "test",
+        })
 
         res1 = self.client.post("/api/v1/chat", headers=self.headers, json={"question": "Who are you?"})
+        self.assertEqual(res1.status_code, 200)
         cid = res1.json()["conversation_id"]
 
         # Turn 2: Groq 429 fails -> OpenRouter takes over with conversational memory
@@ -385,6 +399,15 @@ class TestMultiLLMFallbackRouter(unittest.TestCase):
         p_or_2 = MockProvider("openrouter", return_text="I remember our conversation.")
         router2 = LLMProviderRouter(priority=["groq", "openrouter"], providers={"groq": p_groq_2, "openrouter": p_or_2})
         set_router(router2)
+        mock_intent.return_value = IntentAnalysisResult({
+            "intent": "conversational",
+            "is_relevant": True,
+            "requires_retrieval": False,
+            "resolved_question": "What did I ask?",
+            "search_query": None,
+            "standalone_query": None,
+            "reason": "test",
+        })
 
         res2 = self.client.post("/api/v1/chat", headers=self.headers, json={"question": "What did I ask?", "conversation_id": cid})
         self.assertEqual(res2.status_code, 200)
@@ -392,6 +415,7 @@ class TestMultiLLMFallbackRouter(unittest.TestCase):
         # Inspect memory in OpenRouter's received messages
         received_messages = p_or_2.call_history[0]["messages"]
         self.assertTrue(any("Who are you?" in m.get("content", "") for m in received_messages))
+        mock_retrieve.assert_not_called()
 
     # ------------------------------------------------------------------------
     # Test 12: Existing document citations remain correct after fallback.
@@ -426,33 +450,35 @@ class TestMultiLLMFallbackRouter(unittest.TestCase):
         self.assertEqual(res["sources"][0]["page_number"], 12)
 
     # ------------------------------------------------------------------------
-    # Test 13: Existing domain restriction continues to reject unrelated questions.
+    # Test 13: Substantive questions without supporting chunks must not use pretrained knowledge.
     # ------------------------------------------------------------------------
+    @patch("retrieval_service.retrieve_context")
     @patch("retrieval_service.analyze_query_intent")
-    def test_13_domain_restriction_rejects_unrelated_on_all_providers(self, mock_intent):
+    def test_13_unrelated_question_without_evidence_returns_document_not_found(self, mock_intent, mock_retrieve):
         mock_intent.return_value = {
-            "intent": "unrelated_question",
-            "is_relevant": False,
-            "requires_retrieval": False,
+            "intent": "document_question",
+            "is_relevant": True,
+            "requires_retrieval": True,
             "resolved_question": "What is the capital of France?",
-            "search_query": None,
-            "standalone_query": None,
-            "reason": "world trivia"
+            "search_query": "capital of France",
+            "standalone_query": "capital of France",
+            "reason": "substantive question"
         }
+        mock_retrieve.return_value = {"context": "", "sources": [], "total_matches": 0}
 
-        # Even if Groq fails and OpenRouter generates refusal, it stays domain restricted
-        p_groq = MockProvider("groq", fail_with=LLMProviderError("groq", "429", status_code=429))
-        p_or = MockProvider("openrouter", return_text="I am RevOn's dedicated AI assistant and cannot assist with world trivia.")
-        router = LLMProviderRouter(priority=["groq", "openrouter"], providers={"groq": p_groq, "openrouter": p_or})
+        p_groq = MockProvider("groq", return_text="Paris")
+        router = LLMProviderRouter(priority=["groq"], providers={"groq": p_groq})
         set_router(router)
 
         res = self.client.post("/api/v1/chat", headers=self.headers, json={"question": "What is the capital of France?"})
         self.assertEqual(res.status_code, 200)
         data = res.json()
+        self.assertEqual(data["answer"], "The uploaded documents do not contain the requested information.")
         self.assertNotIn("paris", data["answer"].lower())
-        self.assertIn("revon", data["answer"].lower())
         self.assertEqual(data["sources"], [])
         self.assertFalse(data["is_policy_query"])
+        self.assertEqual(len(p_groq.call_history), 0)
+        mock_retrieve.assert_called_once()
 
     # ------------------------------------------------------------------------
     # Test 14: Existing WordPress chat proxy continues to work.
