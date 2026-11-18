@@ -1,0 +1,320 @@
+{
+  "dataset_name": "revon-rag-qa-eval",
+  "dataset_version": "v1",
+  "description": "Synthetic/redacted RevOn RAG QA evaluation dataset with expected evidence, stable chunk annotations, and abstention behavior. No secrets or unnecessary PII.",
+  "corpus_snapshot": {
+    "description": "Intended synthetic evaluation corpus for RevOn policy/engineering handbook examples. Real experiments must record the actual observed corpus/index snapshot (document filenames/SHA256, index name, namespace, vector count, embedding model/dimension, chunking config, top_k, timestamp, app commit).",
+    "index": "revon-policy-index",
+    "namespace": "revon-policies",
+    "embedding": {
+      "provider": "Google Gemini",
+      "model": "models/text-embedding-004",
+      "dimension": 768
+    },
+    "source_documents": [
+      {
+        "filename": "RevOn_Employee_Handbook_Synthetic_v1.pdf",
+        "sha256": "synthetic-placeholder-sha256-handbook-v1",
+        "logical_document_id": "synthetic-handbook-logical-v1"
+      },
+      {
+        "filename": "RevOn_Engineering_Profile_Synthetic_v1.pdf",
+        "sha256": "synthetic-placeholder-sha256-engineering-v1",
+        "logical_document_id": "synthetic-engineering-logical-v1"
+      }
+    ],
+    "vector_count_expected": "record_at_experiment_time",
+    "top_k_default": 5,
+    "snapshot_recorded_at": "record_at_experiment_time",
+    "notes": "Examples and chunk annotations are synthetic/redacted and designed for repeatable evaluation structure; precision/recall require matching indexed content and precise annotations."
+  },
+  "examples": [
+    {
+      "id": "direct_factual_001",
+      "case_type": "direct_factual",
+      "inputs": { "question": "What is the standard probation period for new employees at RevOn Technologies?" },
+      "outputs": {
+        "reference_answer": "The standard probation period for new employees at RevOn Technologies is 3 months.",
+        "expected_key_facts": ["Standard probation period is 3 months", "Applies to new employees at RevOn Technologies"],
+        "expected_supporting_information": ["Employee handbook states the probation period duration for new hires."],
+        "expected_relevant_chunks": [
+          { "evidence_id": "ev_df_001_c1", "filename": "RevOn_Employee_Handbook_Synthetic_v1.pdf", "page_number": 2, "text_must_contain": "probation period for new employees is 3 months" }
+        ],
+        "expected_abstention": { "should_abstain": false, "acceptable_responses": [], "rationale": "Fact is present in the handbook." }
+      },
+      "metadata": { "case_type": "direct_factual", "sensitivity": "synthetic", "requires_multi_chunk": false }
+    },
+    {
+      "id": "direct_factual_002",
+      "case_type": "direct_factual",
+      "inputs": { "question": "How many paid annual leave days do employees receive per year?" },
+      "outputs": {
+        "reference_answer": "Employees receive 20 paid annual leave days per year.",
+        "expected_key_facts": ["20 paid annual leave days per year"],
+        "expected_supporting_information": ["Leave policy specifies annual paid leave entitlement."],
+        "expected_relevant_chunks": [
+          { "evidence_id": "ev_df_002_c1", "filename": "RevOn_Employee_Handbook_Synthetic_v1.pdf", "page_number": 5, "text_must_contain": "20 paid annual leave days per year" }
+        ],
+        "expected_abstention": { "should_abstain": false, "acceptable_responses": [], "rationale": "Leave entitlement is explicitly stated." }
+      },
+      "metadata": { "case_type": "direct_factual", "sensitivity": "synthetic", "requires_multi_chunk": false }
+    },
+    {
+      "id": "direct_factual_003",
+      "case_type": "direct_factual",
+      "inputs": { "question": "What is the official notice period for resignation?" },
+      "outputs": {
+        "reference_answer": "The official notice period for resignation is 30 days.",
+        "expected_key_facts": ["Notice period for resignation is 30 days"],
+        "expected_supporting_information": ["Separation policy states resignation notice period."],
+        "expected_relevant_chunks": [
+          { "evidence_id": "ev_df_003_c1", "filename": "RevOn_Employee_Handbook_Synthetic_v1.pdf", "page_number": 9, "text_must_contain": "notice period for resignation is 30 days" }
+        ],
+        "expected_abstention": { "should_abstain": false, "acceptable_responses": [], "rationale": "Notice period is directly stated." }
+      },
+      "metadata": { "case_type": "direct_factual", "sensitivity": "synthetic", "requires_multi_chunk": false }
+    },
+    {
+      "id": "technical_skills_001",
+      "case_type": "technical_skills",
+      "inputs": { "question": "Which backend programming languages and frameworks are listed in the engineering profile?" },
+      "outputs": {
+        "reference_answer": "The engineering profile lists Python and FastAPI as backend programming language and framework skills.",
+        "expected_key_facts": ["Python is listed as a backend programming language", "FastAPI is listed as a backend framework"],
+        "expected_supporting_information": ["Technical skills section enumerates backend languages and frameworks."],
+        "expected_relevant_chunks": [
+          { "evidence_id": "ev_ts_001_c1", "filename": "RevOn_Engineering_Profile_Synthetic_v1.pdf", "page_number": 1, "text_must_contain": "Backend skills include Python and FastAPI" }
+        ],
+        "expected_abstention": { "should_abstain": false, "acceptable_responses": [], "rationale": "Backend skills are documented." }
+      },
+      "metadata": { "case_type": "technical_skills", "sensitivity": "synthetic", "requires_multi_chunk": false }
+    },
+    {
+      "id": "technical_skills_002",
+      "case_type": "technical_skills",
+      "inputs": { "question": "What vector database and frontend library are mentioned as technical skills?" },
+      "outputs": {
+        "reference_answer": "The technical skills mention Pinecone as the vector database and React as the frontend library.",
+        "expected_key_facts": ["Pinecone is mentioned as a vector database", "React is mentioned as a frontend library"],
+        "expected_supporting_information": ["Skills inventory includes data infrastructure and frontend technologies."],
+        "expected_relevant_chunks": [
+          { "evidence_id": "ev_ts_002_c1", "filename": "RevOn_Engineering_Profile_Synthetic_v1.pdf", "page_number": 1, "text_must_contain": "Vector database: Pinecone" },
+          { "evidence_id": "ev_ts_002_c2", "filename": "RevOn_Engineering_Profile_Synthetic_v1.pdf", "page_number": 1, "text_must_contain": "Frontend library: React" }
+        ],
+        "expected_abstention": { "should_abstain": false, "acceptable_responses": [], "rationale": "Both skills are documented; evidence may appear in one or more chunks." }
+      },
+      "metadata": { "case_type": "technical_skills", "sensitivity": "synthetic", "requires_multi_chunk": false }
+    },
+    {
+      "id": "technical_skills_003",
+      "case_type": "technical_skills",
+      "inputs": { "question": "Which cloud and containerization skills are included in the engineering profile?" },
+      "outputs": {
+        "reference_answer": "The engineering profile includes AWS for cloud and Docker for containerization.",
+        "expected_key_facts": ["AWS is included as a cloud skill", "Docker is included for containerization"],
+        "expected_supporting_information": ["Infrastructure skills list cloud platform and containerization tooling."],
+        "expected_relevant_chunks": [
+          { "evidence_id": "ev_ts_003_c1", "filename": "RevOn_Engineering_Profile_Synthetic_v1.pdf", "page_number": 2, "text_must_contain": "Cloud: AWS" },
+          { "evidence_id": "ev_ts_003_c2", "filename": "RevOn_Engineering_Profile_Synthetic_v1.pdf", "page_number": 2, "text_must_contain": "Containerization: Docker" }
+        ],
+        "expected_abstention": { "should_abstain": false, "acceptable_responses": [], "rationale": "Cloud and containerization skills are documented." }
+      },
+      "metadata": { "case_type": "technical_skills", "sensitivity": "synthetic", "requires_multi_chunk": false }
+    },
+    {
+      "id": "employment_history_001",
+      "case_type": "employment_history",
+      "inputs": { "question": "What role and employment dates are listed for the position at RevOn Technologies?" },
+      "outputs": {
+        "reference_answer": "The listed role at RevOn Technologies is Senior Software Engineer from January 2021 to March 2024.",
+        "expected_key_facts": ["Role: Senior Software Engineer", "Company: RevOn Technologies", "Employment dates: January 2021 to March 2024"],
+        "expected_supporting_information": ["Employment history section lists title, company, and dates."],
+        "expected_relevant_chunks": [
+          { "evidence_id": "ev_eh_001_c1", "filename": "RevOn_Engineering_Profile_Synthetic_v1.pdf", "page_number": 3, "text_must_contain": "Senior Software Engineer at RevOn Technologies (January 2021 - March 2024)" }
+        ],
+        "expected_abstention": { "should_abstain": false, "acceptable_responses": [], "rationale": "Role and dates are explicitly documented." }
+      },
+      "metadata": { "case_type": "employment_history", "sensitivity": "synthetic", "requires_multi_chunk": false }
+    },
+    {
+      "id": "employment_history_002",
+      "case_type": "employment_history",
+      "inputs": { "question": "What was the previous role and company before RevOn Technologies, and during what dates?" },
+      "outputs": {
+        "reference_answer": "Before RevOn Technologies, the role was Software Engineer at Northstar Systems from June 2018 to December 2020.",
+        "expected_key_facts": ["Role: Software Engineer", "Company: Northstar Systems", "Dates: June 2018 to December 2020"],
+        "expected_supporting_information": ["Prior employment entry includes title, company, and date range."],
+        "expected_relevant_chunks": [
+          { "evidence_id": "ev_eh_002_c1", "filename": "RevOn_Engineering_Profile_Synthetic_v1.pdf", "page_number": 3, "text_must_contain": "Software Engineer at Northstar Systems (June 2018 - December 2020)" }
+        ],
+        "expected_abstention": { "should_abstain": false, "acceptable_responses": [], "rationale": "Prior employment details are documented." }
+      },
+      "metadata": { "case_type": "employment_history", "sensitivity": "synthetic", "requires_multi_chunk": false }
+    },
+    {
+      "id": "employment_history_003",
+      "case_type": "employment_history",
+      "inputs": { "question": "Which projects were delivered during the Senior Software Engineer role at RevOn Technologies?" },
+      "outputs": {
+        "reference_answer": "During the Senior Software Engineer role at RevOn Technologies, Project Atlas and Project Beacon were delivered.",
+        "expected_key_facts": ["Project Atlas was delivered", "Project Beacon was delivered", "Projects associated with Senior Software Engineer role at RevOn Technologies"],
+        "expected_supporting_information": ["Employment/project section links delivered projects to the role at RevOn Technologies."],
+        "expected_relevant_chunks": [
+          { "evidence_id": "ev_eh_003_c1", "filename": "RevOn_Engineering_Profile_Synthetic_v1.pdf", "page_number": 4, "text_must_contain": "Delivered Project Atlas and Project Beacon" }
+        ],
+        "expected_abstention": { "should_abstain": false, "acceptable_responses": [], "rationale": "Project delivery is documented for the role." }
+      },
+      "metadata": { "case_type": "employment_history", "sensitivity": "synthetic", "requires_multi_chunk": false }
+    },
+    {
+      "id": "multi_chunk_001",
+      "case_type": "multi_chunk",
+      "inputs": { "question": "Summarize the leave policy including annual leave entitlement and the process to request leave." },
+      "outputs": {
+        "reference_answer": "Employees receive 20 paid annual leave days per year and must submit leave requests through the HR portal at least 7 days in advance for manager approval.",
+        "expected_key_facts": ["20 paid annual leave days per year", "Submit leave requests through the HR portal", "Request at least 7 days in advance for manager approval"],
+        "expected_supporting_information": ["Leave entitlement stated in one section and request process stated in another section/chunk."],
+        "expected_relevant_chunks": [
+          { "evidence_id": "ev_mc_001_c1", "filename": "RevOn_Employee_Handbook_Synthetic_v1.pdf", "page_number": 5, "text_must_contain": "20 paid annual leave days per year" },
+          { "evidence_id": "ev_mc_001_c2", "filename": "RevOn_Employee_Handbook_Synthetic_v1.pdf", "page_number": 6, "text_must_contain": "submit leave requests through the HR portal at least 7 days in advance" }
+        ],
+        "expected_abstention": { "should_abstain": false, "acceptable_responses": [], "rationale": "Answer requires combining entitlement and process from multiple chunks." }
+      },
+      "metadata": { "case_type": "multi_chunk", "sensitivity": "synthetic", "requires_multi_chunk": true }
+    },
+    {
+      "id": "multi_chunk_002",
+      "case_type": "multi_chunk",
+      "inputs": { "question": "Describe the remote work policy including eligibility and required working hours overlap." },
+      "outputs": {
+        "reference_answer": "Employees are eligible for remote work up to 2 days per week and must maintain at least 4 hours of overlap with core team working hours.",
+        "expected_key_facts": ["Eligible for remote work up to 2 days per week", "Maintain at least 4 hours overlap with core team working hours"],
+        "expected_supporting_information": ["Eligibility and working-hours overlap are specified in separate policy chunks."],
+        "expected_relevant_chunks": [
+          { "evidence_id": "ev_mc_002_c1", "filename": "RevOn_Employee_Handbook_Synthetic_v1.pdf", "page_number": 7, "text_must_contain": "eligible for remote work up to 2 days per week" },
+          { "evidence_id": "ev_mc_002_c2", "filename": "RevOn_Employee_Handbook_Synthetic_v1.pdf", "page_number": 7, "text_must_contain": "maintain at least 4 hours of overlap with core team working hours" }
+        ],
+        "expected_abstention": { "should_abstain": false, "acceptable_responses": [], "rationale": "Requires synthesizing eligibility and overlap requirements." }
+      },
+      "metadata": { "case_type": "multi_chunk", "sensitivity": "synthetic", "requires_multi_chunk": true }
+    },
+    {
+      "id": "multi_chunk_003",
+      "case_type": "multi_chunk",
+      "inputs": { "question": "What technologies and project outcomes are associated with Project Atlas?" },
+      "outputs": {
+        "reference_answer": "Project Atlas used Python and FastAPI and delivered a policy search API for internal users.",
+        "expected_key_facts": ["Project Atlas used Python and FastAPI", "Project Atlas delivered a policy search API for internal users"],
+        "expected_supporting_information": ["Project technology stack and project outcome are described in different chunks/sections."],
+        "expected_relevant_chunks": [
+          { "evidence_id": "ev_mc_003_c1", "filename": "RevOn_Engineering_Profile_Synthetic_v1.pdf", "page_number": 4, "text_must_contain": "Project Atlas used Python and FastAPI" },
+          { "evidence_id": "ev_mc_003_c2", "filename": "RevOn_Engineering_Profile_Synthetic_v1.pdf", "page_number": 4, "text_must_contain": "delivered a policy search API for internal users" }
+        ],
+        "expected_abstention": { "should_abstain": false, "acceptable_responses": [], "rationale": "Requires combining technology and outcome evidence." }
+      },
+      "metadata": { "case_type": "multi_chunk", "sensitivity": "synthetic", "requires_multi_chunk": true }
+    },
+    {
+      "id": "missing_info_001",
+      "case_type": "missing_info",
+      "inputs": { "question": "What is the company's pet insurance benefit?" },
+      "outputs": {
+        "reference_answer": "The uploaded documents do not contain the requested information.",
+        "expected_key_facts": [],
+        "expected_supporting_information": [],
+        "expected_relevant_chunks": [],
+        "expected_abstention": {
+          "should_abstain": true,
+          "acceptable_responses": ["The uploaded documents do not contain the requested information."],
+          "rationale": "No pet insurance information exists in the corpus; the system must abstain without fabricating benefits."
+        }
+      },
+      "metadata": { "case_type": "missing_info", "sensitivity": "synthetic", "requires_multi_chunk": false }
+    },
+    {
+      "id": "missing_info_002",
+      "case_type": "missing_info",
+      "inputs": { "question": "What is the reimbursement limit for international business travel?" },
+      "outputs": {
+        "reference_answer": "The uploaded documents do not contain the requested information.",
+        "expected_key_facts": [],
+        "expected_supporting_information": [],
+        "expected_relevant_chunks": [],
+        "expected_abstention": {
+          "should_abstain": true,
+          "acceptable_responses": ["The uploaded documents do not contain the requested information."],
+          "rationale": "International travel reimbursement limits are not specified in the corpus."
+        }
+      },
+      "metadata": { "case_type": "missing_info", "sensitivity": "synthetic", "requires_multi_chunk": false }
+    },
+    {
+      "id": "missing_info_003",
+      "case_type": "missing_info",
+      "inputs": { "question": "How many stock options are granted to new hires?" },
+      "outputs": {
+        "reference_answer": "The uploaded documents do not contain the requested information.",
+        "expected_key_facts": [],
+        "expected_supporting_information": [],
+        "expected_relevant_chunks": [],
+        "expected_abstention": {
+          "should_abstain": true,
+          "acceptable_responses": ["The uploaded documents do not contain the requested information."],
+          "rationale": "Stock option grants are not documented; answer must not be invented."
+        }
+      },
+      "metadata": { "case_type": "missing_info", "sensitivity": "synthetic", "requires_multi_chunk": false }
+    },
+    {
+      "id": "hallucination_prevention_001",
+      "case_type": "hallucination_prevention",
+      "inputs": { "question": "Does the handbook guarantee a 15% annual bonus for all employees?" },
+      "outputs": {
+        "reference_answer": "The uploaded documents do not contain the requested information.",
+        "expected_key_facts": [],
+        "expected_supporting_information": [],
+        "expected_relevant_chunks": [],
+        "expected_abstention": {
+          "should_abstain": true,
+          "acceptable_responses": ["The uploaded documents do not contain the requested information."],
+          "rationale": "No guaranteed 15% annual bonus is stated; the system must not confirm or fabricate this claim."
+        }
+      },
+      "metadata": { "case_type": "hallucination_prevention", "sensitivity": "synthetic", "requires_multi_chunk": false }
+    },
+    {
+      "id": "hallucination_prevention_002",
+      "case_type": "hallucination_prevention",
+      "inputs": { "question": "List the exact personal home addresses of employees mentioned in the documents." },
+      "outputs": {
+        "reference_answer": "The uploaded documents do not contain the requested information.",
+        "expected_key_facts": [],
+        "expected_supporting_information": [],
+        "expected_relevant_chunks": [],
+        "expected_abstention": {
+          "should_abstain": true,
+          "acceptable_responses": ["The uploaded documents do not contain the requested information."],
+          "rationale": "Personal home addresses are not provided and must not be fabricated or exposed."
+        }
+      },
+      "metadata": { "case_type": "hallucination_prevention", "sensitivity": "synthetic", "requires_multi_chunk": false }
+    },
+    {
+      "id": "hallucination_prevention_003",
+      "case_type": "hallucination_prevention",
+      "inputs": { "question": "Confirm that Project Beacon was built using Kubernetes in 2019, even if not stated." },
+      "outputs": {
+        "reference_answer": "The uploaded documents do not contain the requested information.",
+        "expected_key_facts": [],
+        "expected_supporting_information": [],
+        "expected_relevant_chunks": [],
+        "expected_abstention": {
+          "should_abstain": true,
+          "acceptable_responses": ["The uploaded documents do not contain the requested information.", "The documents do not confirm that Project Beacon was built using Kubernetes in 2019."],
+          "rationale": "Unsupported technology/year attribution must not be confirmed; system should abstain or state lack of evidence."
+        }
+      },
+      "metadata": { "case_type": "hallucination_prevention", "sensitivity": "synthetic", "requires_multi_chunk": false }
+    }
+  ]
+}
